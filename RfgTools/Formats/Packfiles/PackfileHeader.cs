@@ -5,7 +5,7 @@ using System.Text;
 
 namespace RfgTools.Formats.Packfiles
 {
-    class PackfileHeader
+    public class PackfileHeader
     {
         //Header block
         public uint Signature = 0; //Magic sig for this format

@@ -6,7 +6,7 @@ using System.Text;
 namespace RfgTools.Formats.Packfiles
 {
     //Each subfile contained in a packfile has one of these entries. Contains info about a subfile.
-    class PackfileEntry
+    public class PackfileEntry
     {
         //Note that all of these offsets are from the start of their respective sections.
         //So, the NameOffset is from the start of the file names block for example.

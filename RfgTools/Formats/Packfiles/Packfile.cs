@@ -10,7 +10,7 @@ using ICSharpCode.SharpZipLib.Zip.Compression.Streams;
 
 namespace RfgTools.Formats.Packfiles
 {
-    class Packfile
+    public class Packfile
     {
         //Header block
         public PackfileHeader Header;
@@ -24,15 +24,20 @@ namespace RfgTools.Formats.Packfiles
         //Data below here is only used by the unpacker
         public bool Verbose = false;
 
+        public uint DataStartOffset = 0;
+
         public Packfile(bool verbose)
         {
             Verbose = verbose;
         }
 
-        //Reads the header, directory, and filenames blocks from the file.
-        public void ReadFromBinary(string packfilePath, string outputPath)
+        /*
+            Reads the header, directory, and filenames blocks from the file. Doesn't read actual sub-file data
+            Useful for quick initial analysis of a packfile for use with tools, so they can see what's inside 
+            without loading the bulk of the data.
+        */
+        public void ReadMetadata(string packfilePath)
         {
-            Directory.CreateDirectory(outputPath);
             string packfileName = Path.GetFileName(packfilePath);
             var packfileInfo = new FileInfo(packfilePath);
             Console.WriteLine("Extracting " + packfileName + "...");
@@ -72,26 +77,32 @@ namespace RfgTools.Formats.Packfiles
                 packfile.ReadByte(); //Move past null byte
             }
             packfile.ReadBytes(2048 - ((int)packfile.BaseStream.Position % 2048)); //Alignment Padding
+            DataStartOffset = (uint)packfile.BaseStream.Position;
+        }
 
+        public void ExtractFileData(string packfilePath, string outputPath, Stream stream)
+        {
+            Directory.CreateDirectory(outputPath);
             if (Header.Compressed && Header.Condensed)
             {
-                DeserializeCompressedAndCondensed(packfilePath, outputPath, packfile);
+                DeserializeCompressedAndCondensed(packfilePath, outputPath, stream);
             }
             else
             {
                 if (Header.Compressed)
                 {
-                    DeserializeCompressed(packfilePath, outputPath, packfile);
+                    DeserializeCompressed(packfilePath, outputPath, stream);
                 }
                 else
                 {
-                    DeserializeDefault(packfilePath, outputPath, packfile);
+                    DeserializeDefault(packfilePath, outputPath, stream);
                 }
             }
         }
 
-        private void DeserializeCompressedAndCondensed(string packfilePath, string outputPath, BinaryReader packfile)
+        private void DeserializeCompressedAndCondensed(string packfilePath, string outputPath, Stream stream)
         {
+            var packfile = new BinaryReader(stream);
             string packfileName = Path.GetFileName(packfilePath);
             //Inflate whole data block
             byte[] compressedData = new byte[Header.CompressedDataSize];
@@ -137,8 +148,9 @@ namespace RfgTools.Formats.Packfiles
             }
         }
 
-        private void DeserializeCompressed(string packfilePath, string outputPath, BinaryReader packfile)
+        private void DeserializeCompressed(string packfilePath, string outputPath, Stream stream)
         {
+            var packfile = new BinaryReader(stream);
             string packfileName = Path.GetFileName(packfilePath);
             //Inflate block by block
             foreach (var Entry in DirectoryEntries.Select((Value, Index) => new { Index, Value }))
@@ -183,8 +195,9 @@ namespace RfgTools.Formats.Packfiles
             }
         }
 
-        private void DeserializeDefault(string packfilePath, string outputPath, BinaryReader packfile)
+        private void DeserializeDefault(string packfilePath, string outputPath, Stream stream)
         {
+            var packfile = new BinaryReader(stream);
             string packfileName = Path.GetFileName(packfilePath);
             //Copy data into individual files
             foreach (var Entry in DirectoryEntries.Select((Value, Index) => new { Index, Value }))
