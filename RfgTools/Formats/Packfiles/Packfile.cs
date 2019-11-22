@@ -25,6 +25,7 @@ namespace RfgTools.Formats.Packfiles
         public bool Verbose = false;
 
         public uint DataStartOffset = 0;
+        public string Filename { get; protected set; }
 
         public Packfile(bool verbose)
         {
@@ -40,6 +41,8 @@ namespace RfgTools.Formats.Packfiles
         {
             string packfileName = Path.GetFileName(packfilePath);
             var packfileInfo = new FileInfo(packfilePath);
+            Filename = packfileName;
+
             Console.WriteLine("Extracting " + packfileName + "...");
             if (packfileInfo.Length <= 2048)
             {
@@ -82,6 +85,7 @@ namespace RfgTools.Formats.Packfiles
 
         public void ExtractFileData(string packfilePath, string outputPath, Stream stream)
         {
+            Filename = Path.GetFileName(packfilePath);
             Directory.CreateDirectory(outputPath);
             if (Header.Compressed && Header.Condensed)
             {
