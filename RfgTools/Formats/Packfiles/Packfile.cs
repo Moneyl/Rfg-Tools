@@ -7,6 +7,7 @@ using System.Reflection.PortableExecutable;
 using System.Text;
 using ICSharpCode.SharpZipLib.Zip.Compression;
 using ICSharpCode.SharpZipLib.Zip.Compression.Streams;
+using OGE.Helpers;
 
 namespace RfgTools.Formats.Packfiles
 {
@@ -25,7 +26,9 @@ namespace RfgTools.Formats.Packfiles
         public bool Verbose = false;
 
         public uint DataStartOffset = 0;
-        public string Filename { get; protected set; }
+        public string Filename { get; private set; }
+        public string PackfilePath { get; private set; }
+        public bool MetadataWasRead { get; private set; } = false;
 
         public Packfile(bool verbose)
         {
@@ -39,6 +42,7 @@ namespace RfgTools.Formats.Packfiles
         */
         public void ReadMetadata(string packfilePath)
         {
+            PackfilePath = packfilePath;
             string packfileName = Path.GetFileName(packfilePath);
             var packfileInfo = new FileInfo(packfilePath);
             Filename = packfileName;
@@ -81,10 +85,93 @@ namespace RfgTools.Formats.Packfiles
             }
             packfile.ReadBytes(2048 - ((int)packfile.BaseStream.Position % 2048)); //Alignment Padding
             DataStartOffset = (uint)packfile.BaseStream.Position;
+            MetadataWasRead = true;
+            packfile.Dispose();
+
+            //Fix data offsets, values in file not valid.
+            //Don't bother if compressed and condensed since those must be fully extracted
+            if (!(Header.Compressed && Header.Condensed))
+            {
+                uint runningDataOffset = 0; //Track relative offset from data section start
+                foreach (var entry in DirectoryEntries)
+                {
+                    //Set entry offset
+                    entry.DataOffset = runningDataOffset;
+
+                    //Update offset based on entry size and storage type
+                    if (Header.Compressed) //Compressed, not condensed
+                    {
+                        runningDataOffset += entry.CompressedDataSize;
+                        runningDataOffset += GetAlignmentPad(runningDataOffset);
+                    }
+                    else //Not compressed, maybe condensed
+                    {
+                        runningDataOffset += entry.DataSize;
+                        if(!Header.Condensed)
+                            runningDataOffset += GetAlignmentPad(runningDataOffset);
+                    }
+                }
+            }
         }
 
-        public void ExtractFileData(string packfilePath, string outputPath, Stream stream)
+        public bool CanExtractSingleFile()
         {
+            return Header != null && !(Header.Compressed && Header.Condensed);
+        }
+
+        public bool TryExtractSingleFile(string subFileName, string outputPath)
+        {
+            if (!CanExtractSingleFile())
+                return false;
+            if (!Filenames.Contains(subFileName) || !MetadataWasRead)
+                return false;
+
+            int subFileIndex = Filenames.IndexOf(subFileName);
+            if (subFileIndex == -1)
+                return false;
+
+            var entry = DirectoryEntries[subFileIndex];
+            var packfile = GetStreamAtDataSectionStart();
+            if (packfile == Stream.Null)
+                return false;
+
+            packfile.Seek(entry.DataOffset, SeekOrigin.Current);
+            if (Header.Compressed)
+            {
+                var streamLength = packfile.Length;
+                var streamPosition = packfile.Position;
+
+                var bytes = new byte[entry.CompressedDataSize];
+                packfile.Read(bytes, 0, (int)entry.CompressedDataSize);
+                if(!CompressionHelpers.TryZlibInflate(bytes, entry.DataSize, out byte[] decompressedData))
+                    return false;
+                File.WriteAllBytes(outputPath, decompressedData);
+            }
+            else
+            {
+                var bytes = new byte[entry.DataSize];
+                packfile.Read(bytes, (int)packfile.Position, (int)entry.DataSize);
+                File.WriteAllBytes(outputPath, bytes);
+            }
+            return true;
+        }
+
+        private Stream GetStreamAtDataSectionStart()
+        {
+            if(!MetadataWasRead)
+                return Stream.Null;
+
+            var stream = new FileStream(PackfilePath, FileMode.Open, FileAccess.Read);
+            var streamLength = stream.Length;
+            var streamPosition = stream.Position;
+            stream.Seek(DataStartOffset, SeekOrigin.Begin);
+            return stream;
+        }
+
+        public void ExtractFileData(string packfilePath, string outputPath)
+        {
+            Stream stream = new FileStream(packfilePath, FileMode.Open);
+            PackfilePath = packfilePath;
             Filename = Path.GetFileName(packfilePath);
             Directory.CreateDirectory(outputPath);
             if (Header.Compressed && Header.Condensed)
@@ -106,6 +193,7 @@ namespace RfgTools.Formats.Packfiles
 
         private void DeserializeCompressedAndCondensed(string packfilePath, string outputPath, Stream stream)
         {
+            PackfilePath = packfilePath;
             var packfile = new BinaryReader(stream);
             string packfileName = Path.GetFileName(packfilePath);
             //Inflate whole data block
@@ -113,6 +201,7 @@ namespace RfgTools.Formats.Packfiles
             byte[] decompressedData = new byte[Header.DataSize];
             packfile.Read(compressedData, 0, (int)Header.CompressedDataSize);
 
+            //Todo: Switch to use CompressionHelpers.TryZlibDeflate()
             int decompressedSizeResult = 0;
             using (MemoryStream memory = new MemoryStream(compressedData))
             {
@@ -154,6 +243,7 @@ namespace RfgTools.Formats.Packfiles
 
         private void DeserializeCompressed(string packfilePath, string outputPath, Stream stream)
         {
+            PackfilePath = packfilePath;
             var packfile = new BinaryReader(stream);
             string packfileName = Path.GetFileName(packfilePath);
             //Inflate block by block
@@ -167,6 +257,7 @@ namespace RfgTools.Formats.Packfiles
                 byte[] decompressedData = new byte[Entry.Value.DataSize];
                 packfile.Read(compressedData, 0, (int)Entry.Value.CompressedDataSize);
 
+                //Todo: Switch to use CompressionHelpers.TryZlibDeflate()
                 int decompressedSizeResult = 0;
                 using (var memory = new MemoryStream(compressedData))
                 {
@@ -201,6 +292,7 @@ namespace RfgTools.Formats.Packfiles
 
         private void DeserializeDefault(string packfilePath, string outputPath, Stream stream)
         {
+            PackfilePath = packfilePath;
             var packfile = new BinaryReader(stream);
             string packfileName = Path.GetFileName(packfilePath);
             //Copy data into individual files
@@ -434,6 +526,7 @@ namespace RfgTools.Formats.Packfiles
             return hash;
         }
 
+        //Todo: Move these into relevant helpers/namespaces
         int GetAlignmentPad(int position)
         {
             int remainder = position % 2048;

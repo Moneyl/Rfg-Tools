@@ -12,7 +12,7 @@ namespace RfgTools.Formats.Packfiles
         //So, the NameOffset is from the start of the file names block for example.
         public uint NameOffset = 0; //Offset in bytes to files name. First entries value is 0.
         public uint Sector = 0; //Empty. Likely used by game internally.
-        public uint DataOffset = 0; //Offset in bytes to this files data in the packfile
+        public uint DataOffset = 0; //Offset in bytes to this files data in the packfile. Todo: Check to see if this is ever valid, in misc.vpp_pc it seems this is always wrong
         public uint NameHash = 0; //Name hash for this file
         public uint DataSize = 0; //Size in bytes of this files uncompressed data
         public uint CompressedDataSize = 0; //Size in bytes of this files data. Is 0xFFFFFFFF (‭4294967295‬) if not compressed.

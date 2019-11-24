@@ -266,5 +266,21 @@ namespace RfgTools.Helpers
             stream.Write(bytes, 0, bytes.Length);
             stream.Write((byte)0);
         }
+
+        public static uint GetAlignmentPad(long currentPos, long alignmentValue)
+        {
+            uint remainder = (uint)(currentPos % alignmentValue);
+            uint paddingSize = 0;
+            if (remainder > 0)
+            {
+                paddingSize = (uint)alignmentValue - remainder;
+            }
+            else
+            {
+                paddingSize = 0;
+            }
+
+            return paddingSize;
+        }
     }
 }
