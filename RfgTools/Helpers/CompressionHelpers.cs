@@ -8,10 +8,10 @@ namespace OGE.Helpers
 {
     public static class CompressionHelpers
     {
-        public static bool TryZlibInflate(byte[] compressedData, uint decompressedDataSize, out byte[] decompressedData)
+        public static bool TryZlibInflate(byte[] compressedData, uint decompressedDataSize, out byte[] decompressedData, out int decompressedSizeResult)
         {
             decompressedData = new byte[decompressedDataSize];
-            int decompressedSizeResult = 0;
+            decompressedSizeResult = 0;
             
             using (MemoryStream memory = new MemoryStream(compressedData))
             {
