@@ -8,6 +8,7 @@ using System.Text;
 using ICSharpCode.SharpZipLib.Zip.Compression;
 using ICSharpCode.SharpZipLib.Zip.Compression.Streams;
 using OGE.Helpers;
+using RfgTools.Formats.Asm;
 
 namespace RfgTools.Formats.Packfiles
 {
@@ -17,18 +18,23 @@ namespace RfgTools.Formats.Packfiles
         public PackfileHeader Header;
 
         //Directory block
-        public List<PackfileEntry> DirectoryEntries;
+        public List<PackfileEntry> DirectoryEntries = new List<PackfileEntry>();
 
         //Filenames block
-        public List<string> Filenames;
+        public List<string> Filenames = new List<string>();
 
-        //Data below here is only used by the unpacker
+
+        //Data below here is only used by tools, not actually in packfiles
         public bool Verbose = false;
 
         public uint DataStartOffset = 0;
         public string Filename { get; private set; }
         public string PackfilePath { get; private set; }
         public bool MetadataWasRead { get; private set; } = false;
+
+        //Table of content files in this packfile, has info about contents of str2_pc files.
+        public List<AsmFile> AsmFiles = new List<AsmFile>();
+        public bool ContainsAsmFiles { get; private set; } = false;
 
         public Packfile(bool verbose)
         {
@@ -62,7 +68,6 @@ namespace RfgTools.Formats.Packfiles
             Header = new PackfileHeader();
             Header.ReadFromBinary(packfile);
 
-            DirectoryEntries = new List<PackfileEntry>();
             for (int i = 0; i < Header.NumberOfFiles; i++)
             {
                 var entry = new PackfileEntry();
@@ -71,7 +76,6 @@ namespace RfgTools.Formats.Packfiles
             }
             packfile.ReadBytes(2048 - ((int)packfile.BaseStream.Position % 2048)); //Alignment Padding
 
-            Filenames = new List<string>();
             for (int i = 0; i < Header.NumberOfFiles; i++)
             {
                 var name = new StringBuilder();
@@ -80,8 +84,14 @@ namespace RfgTools.Formats.Packfiles
                     name.Append(packfile.ReadChar());
                 }
                 while (packfile.PeekChar() != 0);
+
                 Filenames.Add(name.ToString());
                 packfile.ReadByte(); //Move past null byte
+
+                if (Path.GetExtension(name.ToString()) == ".asm_pc")
+                    ContainsAsmFiles = true;
+                DirectoryEntries[i].FileName = name.ToString();
+                DirectoryEntries[i].Extension = Path.GetExtension(name.ToString());
             }
             packfile.ReadBytes(2048 - ((int)packfile.BaseStream.Position % 2048)); //Alignment Padding
             DataStartOffset = (uint)packfile.BaseStream.Position;
@@ -98,27 +108,105 @@ namespace RfgTools.Formats.Packfiles
         /// </summary>
         private void FixEntryDataOffsets()
         {
+            if (Path.GetFileName(PackfilePath) == "terr01_l0.vpp_pc")
+            {
+                var a = 2;
+            }
             if (!(Header.Compressed && Header.Condensed))
             {
-                uint runningDataOffset = 0; //Track relative offset from data section start
+                long runningDataOffset = 0; //Track relative offset from data section start
                 foreach (var entry in DirectoryEntries)
                 {
+                    if (entry.FileName == "terr01_l0.asm_pc")
+                    {
+                        var b = 2;
+                    }
+                    if (entry.DataOffset != runningDataOffset)
+                    {
+                        var c = 44;
+                    }
+                    //Calculate wrapped offset and check on which that differs from file offset (For debugging)
+                    long finalDataOffset = runningDataOffset;
+                    while (finalDataOffset > uint.MaxValue)
+                    {
+                        finalDataOffset -= uint.MaxValue;
+                    }
+                    if (entry.DataOffset != finalDataOffset)
+                    {
+                        var d = 2;
+                    }
+
                     //Set entry offset
                     entry.DataOffset = runningDataOffset;
 
                     //Update offset based on entry size and storage type
                     if (Header.Compressed) //Compressed, not condensed
                     {
-                        runningDataOffset += entry.CompressedDataSize;
-                        runningDataOffset += GetAlignmentPad(runningDataOffset);
+                        if (runningDataOffset + entry.CompressedDataSize > uint.MaxValue)
+                        {
+                            runningDataOffset += entry.CompressedDataSize - 1;
+                        }
+                        else
+                        {
+                            runningDataOffset += entry.CompressedDataSize;
+                        }
+
+                        long alignmentPad = GetAlignmentPad(runningDataOffset);
+                        if (runningDataOffset + alignmentPad > uint.MaxValue)
+                        {
+                            runningDataOffset += alignmentPad - 1;
+                        }
+                        else
+                        {
+                            runningDataOffset += alignmentPad;
+                        }
                     }
                     else //Not compressed, maybe condensed
                     {
                         runningDataOffset += entry.DataSize;
                         if (!Header.Condensed)
-                            runningDataOffset += GetAlignmentPad(runningDataOffset);
+                        {
+                            long alignmentPad = GetAlignmentPad(runningDataOffset);
+                            if (runningDataOffset + alignmentPad > uint.MaxValue)
+                            {
+                                runningDataOffset += GetAlignmentPad(runningDataOffset) - 1;
+                            }
+                            else
+                            {
+                                runningDataOffset += GetAlignmentPad(runningDataOffset);
+                            }
+                        }
                     }
                 }
+            }
+        }
+
+        /// <summary>
+        /// Parses the asm_pc files in the packfile, and stores data about them in AsmFiles.
+        /// Allows viewing of the files in str2_pc files in vpp_pc files, without extracting them.
+        /// </summary>
+        /// <param name="outputPath">Folder to extract the asm_pc file(s) to.</param>
+        public void ParseAsmFiles(string outputPath)
+        {
+            if(!MetadataWasRead || !ContainsAsmFiles)
+                return;
+
+            if (Path.GetFileName(PackfilePath) == "terr01_l0.vpp_pc")
+            {
+                var a = 2;
+            }
+
+            Directory.CreateDirectory(outputPath);
+            foreach (var entry in DirectoryEntries)
+            {
+                if(entry.Extension != ".asm_pc")
+                    continue;
+                if(!TryExtractSingleFile(entry.FileName, $"{outputPath}{entry.FileName}"))
+                    ExtractFileData(outputPath);
+
+                var asmFile = new AsmFile();
+                asmFile.ReadFromBinary($"{outputPath}{entry.FileName}");
+                AsmFiles.Add(asmFile);
             }
         }
 
@@ -154,6 +242,10 @@ namespace RfgTools.Formats.Packfiles
             }
             else
             {
+                if (subFileName == "terr01_l0.asm_pc")
+                {
+                    var b = 2;
+                }
                 var bytes = new byte[entry.DataSize];
                 packfile.Read(bytes, 0, (int)entry.DataSize);
                 File.WriteAllBytes(outputPath, bytes);
@@ -168,7 +260,7 @@ namespace RfgTools.Formats.Packfiles
 
             var stream = new FileStream(PackfilePath, FileMode.Open, FileAccess.Read);
             var streamLength = stream.Length;
-            var streamPosition = stream.Position;
+            var streamPos = stream.Position;
             stream.Seek(DataStartOffset, SeekOrigin.Begin);
             return stream;
         }
@@ -202,6 +294,7 @@ namespace RfgTools.Formats.Packfiles
                     DeserializeDefault(PackfilePath, outputPath, stream);
                 }
             }
+            stream.Dispose();
         }
 
         private void DeserializeCompressedAndCondensed(string packfilePath, string outputPath, Stream stream)
@@ -550,7 +643,11 @@ namespace RfgTools.Formats.Packfiles
         uint GetAlignmentPad(uint position)
         {
             uint remainder = position % 2048;
-            return 2048 - remainder;
+            if (remainder > 0)
+            {
+                return 2048 - remainder;
+            }
+            return 0;
         }
     }
 }

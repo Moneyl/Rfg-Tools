@@ -12,13 +12,18 @@ namespace RfgTools.Formats.Packfiles
         //So, the NameOffset is from the start of the file names block for example.
         public uint NameOffset = 0; //Offset in bytes to files name. First entries value is 0.
         public uint Sector = 0; //Empty. Likely used by game internally.
-        public uint DataOffset = 0; //Offset in bytes to this files data in the packfile. Todo: Check to see if this is ever valid, in misc.vpp_pc it seems this is always wrong
+        //Offset in bytes to this files data in the packfile. Stored as a long internally so tools can actually use it,
+        //but read/wrote as uint since the game expects a 4 byte value
+        public long DataOffset = 0; 
         public uint NameHash = 0; //Name hash for this file
         public uint DataSize = 0; //Size in bytes of this files uncompressed data
         public uint CompressedDataSize = 0; //Size in bytes of this files data. Is 0xFFFFFFFF (‭4294967295‬) if not compressed.
         public uint PackagePointer = 0; //Empty. Likely used by game internally.
 
-        public string FullPath; //Used during packing for convenience
+        //Convenience variables used for tooling
+        public string FullPath; 
+        public string FileName;
+        public string Extension;
 
         public void ReadFromBinary(BinaryReader file)
         {
@@ -33,9 +38,17 @@ namespace RfgTools.Formats.Packfiles
 
         public void WriteToBinary(BinaryWriter file)
         {
+            //Calculate value as if it was always a uint and the data wrapped.
+            //Done this way to attempt to emulate what the game originally stored in files.
+            ulong finalDataOffset = DataSize;
+            while (finalDataOffset > uint.MaxValue)
+            {
+                finalDataOffset -= uint.MaxValue;
+            }
+
             file.Write(NameOffset);
             file.Write(Sector);
-            file.Write(DataOffset);
+            file.Write((uint)finalDataOffset);
             file.Write(NameHash);
             file.Write(DataSize);
             file.Write(CompressedDataSize);

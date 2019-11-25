@@ -10,22 +10,22 @@ namespace RfgTools.Formats.Asm
         public ushort Version { get; set; }
         public ushort ContainerCount { get; set; }
 
-        public List<AsmContainer> Containers;
+        public List<AsmContainer> Containers = new List<AsmContainer>();
 
         //Values used internally by tools start here
-        public string AsmPath { get; }
-        public string AsmFileName { get; }
+        public string AsmPath { get; private set; }
+        public string AsmFileName { get; private set; }
 
-        public AsmFile(string asmPath)
+        public AsmFile()
+        {
+
+        }
+
+        public void ReadFromBinary(string asmPath)
         {
             AsmPath = asmPath;
             AsmFileName = Path.GetFileName(asmPath);
 
-            Containers = new List<AsmContainer>();
-        }
-
-        public void ReadFromBinary()
-        {
             using (var stream = new BinaryReader(new FileStream(AsmPath, FileMode.Open)))
             {
                 Signature = stream.ReadUInt32();
