@@ -115,8 +115,15 @@ namespace RfgTools.Formats.Packfiles
             if (!(Header.Compressed && Header.Condensed))
             {
                 long runningDataOffset = 0; //Track relative offset from data section start
+                uint wrappedRunningDataOffset = 0;
+                long wrappedDelta = 0;
+                bool addedDataStartOffset = false;
                 foreach (var entry in DirectoryEntries)
                 {
+                    //Expected total offset: 6930774016
+                    //Expected relative offset: 6930808832
+                    const long expectedTotalOffset = 6930774016;
+                    const long expectedRelativeOffset = 6930739200;
                     if (entry.FileName == "terr01_l0.asm_pc")
                     {
                         var b = 2;
@@ -136,6 +143,15 @@ namespace RfgTools.Formats.Packfiles
                         var d = 2;
                     }
 
+                    long runningExpectedAbsoluteDif = expectedTotalOffset - runningDataOffset;
+                    var a = 2;
+                    long expectedDataStart = expectedTotalOffset - expectedRelativeOffset;
+                    var f = 2;
+                    long runningExpectedRelativeDif = expectedRelativeOffset - runningDataOffset;
+                    var g = 2;
+                    long runningAbsoluteOffset = runningDataOffset + DataStartOffset;
+                    var h = 3;
+
                     //Set entry offset
                     entry.DataOffset = runningDataOffset;
 
@@ -145,6 +161,12 @@ namespace RfgTools.Formats.Packfiles
                         if (runningDataOffset + entry.CompressedDataSize > uint.MaxValue)
                         {
                             runningDataOffset += entry.CompressedDataSize - 1;
+                            if (!addedDataStartOffset)
+                            {
+                                runningDataOffset -= DataStartOffset;
+                                runningDataOffset -= 1;
+                                addedDataStartOffset = true;
+                            }
                         }
                         else
                         {
@@ -155,26 +177,66 @@ namespace RfgTools.Formats.Packfiles
                         if (runningDataOffset + alignmentPad > uint.MaxValue)
                         {
                             runningDataOffset += alignmentPad - 1;
+                            if (!addedDataStartOffset)
+                            {
+                                runningDataOffset -= DataStartOffset;
+                                runningDataOffset -= 1;
+                                addedDataStartOffset = true;
+                            }
                         }
                         else
                         {
                             runningDataOffset += alignmentPad;
                         }
+
+                        uint wrappedAlignmentPad = GetAlignmentPad(wrappedRunningDataOffset);
+                        wrappedRunningDataOffset += entry.CompressedDataSize;
+                        wrappedRunningDataOffset += wrappedAlignmentPad;
+
+                        wrappedDelta += entry.CompressedDataSize;
+                        wrappedDelta += wrappedAlignmentPad;
                     }
                     else //Not compressed, maybe condensed
                     {
-                        runningDataOffset += entry.DataSize;
+                        if (runningDataOffset + entry.DataSize > uint.MaxValue)
+                        {
+                            runningDataOffset += entry.DataSize - 1;
+                            if (!addedDataStartOffset)
+                            {
+                                runningDataOffset -= DataStartOffset;
+                                runningDataOffset -= 1;
+                                addedDataStartOffset = true;
+                            }
+                        }
+                        else
+                        {
+                            runningDataOffset += entry.DataSize;
+                        }
+
                         if (!Header.Condensed)
                         {
                             long alignmentPad = GetAlignmentPad(runningDataOffset);
                             if (runningDataOffset + alignmentPad > uint.MaxValue)
                             {
                                 runningDataOffset += GetAlignmentPad(runningDataOffset) - 1;
+                                if (!addedDataStartOffset)
+                                {
+                                    runningDataOffset -= DataStartOffset;
+                                    runningDataOffset -= 1;
+                                    addedDataStartOffset = true;
+                                }
                             }
                             else
                             {
                                 runningDataOffset += GetAlignmentPad(runningDataOffset);
                             }
+
+                            wrappedRunningDataOffset += entry.DataSize;
+                            wrappedDelta += entry.DataSize;
+
+                            uint wrappedAlignmentPad = GetAlignmentPad(wrappedRunningDataOffset);
+                            wrappedRunningDataOffset += wrappedAlignmentPad;
+                            wrappedDelta += wrappedAlignmentPad;
                         }
                     }
                 }
