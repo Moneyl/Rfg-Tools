@@ -117,7 +117,7 @@ namespace RfgTools.Formats.Packfiles
                 long runningDataOffset = 0; //Track relative offset from data section start
                 uint wrappedRunningDataOffset = 0;
                 long wrappedDelta = 0;
-                bool addedDataStartOffset = false;
+                bool addedDataStartOffset = true;
                 foreach (var entry in DirectoryEntries)
                 {
                     //Expected total offset: 6930774016
@@ -160,7 +160,7 @@ namespace RfgTools.Formats.Packfiles
                     {
                         if (runningDataOffset + entry.CompressedDataSize > uint.MaxValue)
                         {
-                            runningDataOffset += entry.CompressedDataSize - 1;
+                            runningDataOffset += entry.CompressedDataSize;// - 1;
                             if (!addedDataStartOffset)
                             {
                                 runningDataOffset -= DataStartOffset;
@@ -176,7 +176,7 @@ namespace RfgTools.Formats.Packfiles
                         long alignmentPad = GetAlignmentPad(runningDataOffset);
                         if (runningDataOffset + alignmentPad > uint.MaxValue)
                         {
-                            runningDataOffset += alignmentPad - 1;
+                            runningDataOffset += alignmentPad;// - 1;
                             if (!addedDataStartOffset)
                             {
                                 runningDataOffset -= DataStartOffset;
@@ -200,7 +200,7 @@ namespace RfgTools.Formats.Packfiles
                     {
                         if (runningDataOffset + entry.DataSize > uint.MaxValue)
                         {
-                            runningDataOffset += entry.DataSize - 1;
+                            runningDataOffset += entry.DataSize;// - 1;
                             if (!addedDataStartOffset)
                             {
                                 runningDataOffset -= DataStartOffset;
@@ -218,7 +218,7 @@ namespace RfgTools.Formats.Packfiles
                             long alignmentPad = GetAlignmentPad(runningDataOffset);
                             if (runningDataOffset + alignmentPad > uint.MaxValue)
                             {
-                                runningDataOffset += GetAlignmentPad(runningDataOffset) - 1;
+                                runningDataOffset += GetAlignmentPad(runningDataOffset);// - 1;
                                 if (!addedDataStartOffset)
                                 {
                                     runningDataOffset -= DataStartOffset;
@@ -250,7 +250,7 @@ namespace RfgTools.Formats.Packfiles
         /// <param name="outputPath">Folder to extract the asm_pc file(s) to.</param>
         public void ParseAsmFiles(string outputPath)
         {
-            if(!MetadataWasRead || !ContainsAsmFiles)
+            if (!MetadataWasRead || !ContainsAsmFiles)
                 return;
 
             if (Path.GetFileName(PackfilePath) == "terr01_l0.vpp_pc")
@@ -261,9 +261,9 @@ namespace RfgTools.Formats.Packfiles
             Directory.CreateDirectory(outputPath);
             foreach (var entry in DirectoryEntries)
             {
-                if(entry.Extension != ".asm_pc")
+                if (entry.Extension != ".asm_pc")
                     continue;
-                if(!TryExtractSingleFile(entry.FileName, $"{outputPath}{entry.FileName}"))
+                if (!TryExtractSingleFile(entry.FileName, $"{outputPath}{entry.FileName}"))
                     ExtractFileData(outputPath);
 
                 var asmFile = new AsmFile();
@@ -298,7 +298,7 @@ namespace RfgTools.Formats.Packfiles
             {
                 var bytes = new byte[entry.CompressedDataSize];
                 packfile.Read(bytes, 0, (int)entry.CompressedDataSize);
-                if(!CompressionHelpers.TryZlibInflate(bytes, entry.DataSize, out byte[] decompressedData, out _))
+                if (!CompressionHelpers.TryZlibInflate(bytes, entry.DataSize, out byte[] decompressedData, out _))
                     return false;
                 File.WriteAllBytes(outputPath, decompressedData);
             }
@@ -317,7 +317,7 @@ namespace RfgTools.Formats.Packfiles
 
         private Stream GetStreamAtDataSectionStart()
         {
-            if(!MetadataWasRead)
+            if (!MetadataWasRead)
                 return Stream.Null;
 
             var stream = new FileStream(PackfilePath, FileMode.Open, FileAccess.Read);
@@ -334,7 +334,7 @@ namespace RfgTools.Formats.Packfiles
         /// <param name="outputPath"></param>
         public void ExtractFileData(string outputPath)
         {
-            if(!MetadataWasRead)
+            if (!MetadataWasRead)
                 return;
 
             Stream stream = GetStreamAtDataSectionStart();
@@ -369,7 +369,7 @@ namespace RfgTools.Formats.Packfiles
             byte[] compressedData = new byte[Header.CompressedDataSize];
             packfile.Read(compressedData, 0, (int)Header.CompressedDataSize);
 
-            if(!CompressionHelpers.TryZlibInflate(compressedData, Header.DataSize, out byte[] decompressedData, out int decompressedSizeResult))
+            if (!CompressionHelpers.TryZlibInflate(compressedData, Header.DataSize, out byte[] decompressedData, out int decompressedSizeResult))
             {
                 string errorString = $"Error while deflating {packfileName}! Decompressed data size is {decompressedSizeResult} " +
                                      $"bytes, while it should be {Header.DataSize} bytes according to header data.";
@@ -381,7 +381,7 @@ namespace RfgTools.Formats.Packfiles
             {
                 var entry = DirectoryEntries[i];
                 long decompressedPosition = entry.DataOffset;
-                if (Verbose) 
+                if (Verbose)
                     Console.Write("{0}> Extracting {1}...", packfileName, Filenames[i]);
 
                 using (var writer = new BinaryWriter(System.IO.File.Create(outputPath + Filenames[i])))
@@ -391,7 +391,7 @@ namespace RfgTools.Formats.Packfiles
                         writer.Write(decompressedData[decompressedPosition + j]);
                     }
                 }
-                if (Verbose) 
+                if (Verbose)
                     Console.WriteLine(" Done!");
             }
         }
