@@ -56,7 +56,7 @@ namespace RfgTools.Formats.Packfiles
             Console.WriteLine("Extracting " + packfileName + "...");
             if (packfileInfo.Length <= 2048)
             {
-                Console.WriteLine("Cancelled extraction of {0}. Packfile is empty!", packfileName);
+                Console.WriteLine($"Cancelled extraction of {packfileName}. Packfile is empty!");
                 return;
             }
             if (Verbose)
@@ -104,139 +104,63 @@ namespace RfgTools.Formats.Packfiles
 
         /// <summary>
         /// Fix data offsets. Values in packfile not always valid.
-        /// Ignores packfiles that are compressed AND condensed since those must be fully extracted
+        /// Ignores packfiles that are compressed AND condensed since those must
+        /// be fully extracted and data offsets aren't relevant in that case.
         /// </summary>
         private void FixEntryDataOffsets()
         {
-            if (Path.GetFileName(PackfilePath) == "terr01_l0.vpp_pc")
+            if (Header.Compressed && Header.Condensed) 
+                return;
+
+            long runningDataOffset = 0; //Track relative offset from data section start
+            foreach (var entry in DirectoryEntries)
             {
-                var a = 2;
-            }
-            if (!(Header.Compressed && Header.Condensed))
-            {
-                long runningDataOffset = 0; //Track relative offset from data section start
-                uint wrappedRunningDataOffset = 0;
-                long wrappedDelta = 0;
-                bool addedDataStartOffset = true;
-                foreach (var entry in DirectoryEntries)
+                //Set entry offset
+                entry.DataOffset = runningDataOffset;
+
+                //Update offset based on entry size and storage type
+                if (Header.Compressed) //Compressed, not condensed
                 {
-                    //Expected total offset: 6930774016
-                    //Expected relative offset: 6930808832
-                    const long expectedTotalOffset = 6930774016;
-                    const long expectedRelativeOffset = 6930739200;
-                    if (entry.FileName == "terr01_l0.asm_pc")
+                    if (runningDataOffset + entry.CompressedDataSize > uint.MaxValue)
                     {
-                        var b = 2;
+                        runningDataOffset += entry.CompressedDataSize;
                     }
-                    if (entry.DataOffset != runningDataOffset)
+                    else
                     {
-                        var c = 44;
-                    }
-                    //Calculate wrapped offset and check on which that differs from file offset (For debugging)
-                    long finalDataOffset = runningDataOffset;
-                    while (finalDataOffset > uint.MaxValue)
-                    {
-                        finalDataOffset -= uint.MaxValue;
-                    }
-                    if (entry.DataOffset != finalDataOffset)
-                    {
-                        var d = 2;
+                        runningDataOffset += entry.CompressedDataSize;
                     }
 
-                    long runningExpectedAbsoluteDif = expectedTotalOffset - runningDataOffset;
-                    var a = 2;
-                    long expectedDataStart = expectedTotalOffset - expectedRelativeOffset;
-                    var f = 2;
-                    long runningExpectedRelativeDif = expectedRelativeOffset - runningDataOffset;
-                    var g = 2;
-                    long runningAbsoluteOffset = runningDataOffset + DataStartOffset;
-                    var h = 3;
-
-                    //Set entry offset
-                    entry.DataOffset = runningDataOffset;
-
-                    //Update offset based on entry size and storage type
-                    if (Header.Compressed) //Compressed, not condensed
+                    long alignmentPad = GetAlignmentPad(runningDataOffset);
+                    if (runningDataOffset + alignmentPad > uint.MaxValue)
                     {
-                        if (runningDataOffset + entry.CompressedDataSize > uint.MaxValue)
-                        {
-                            runningDataOffset += entry.CompressedDataSize;// - 1;
-                            if (!addedDataStartOffset)
-                            {
-                                runningDataOffset -= DataStartOffset;
-                                runningDataOffset -= 1;
-                                addedDataStartOffset = true;
-                            }
-                        }
-                        else
-                        {
-                            runningDataOffset += entry.CompressedDataSize;
-                        }
+                        runningDataOffset += alignmentPad;
+                    }
+                    else
+                    {
+                        runningDataOffset += alignmentPad;
+                    }
+                }
+                else //Not compressed, maybe condensed
+                {
+                    if (runningDataOffset + entry.DataSize > uint.MaxValue)
+                    {
+                        runningDataOffset += entry.DataSize;
+                    }
+                    else
+                    {
+                        runningDataOffset += entry.DataSize;
+                    }
 
+                    if (!Header.Condensed)
+                    {
                         long alignmentPad = GetAlignmentPad(runningDataOffset);
                         if (runningDataOffset + alignmentPad > uint.MaxValue)
                         {
-                            runningDataOffset += alignmentPad;// - 1;
-                            if (!addedDataStartOffset)
-                            {
-                                runningDataOffset -= DataStartOffset;
-                                runningDataOffset -= 1;
-                                addedDataStartOffset = true;
-                            }
+                            runningDataOffset += GetAlignmentPad(runningDataOffset);
                         }
                         else
                         {
-                            runningDataOffset += alignmentPad;
-                        }
-
-                        uint wrappedAlignmentPad = GetAlignmentPad(wrappedRunningDataOffset);
-                        wrappedRunningDataOffset += entry.CompressedDataSize;
-                        wrappedRunningDataOffset += wrappedAlignmentPad;
-
-                        wrappedDelta += entry.CompressedDataSize;
-                        wrappedDelta += wrappedAlignmentPad;
-                    }
-                    else //Not compressed, maybe condensed
-                    {
-                        if (runningDataOffset + entry.DataSize > uint.MaxValue)
-                        {
-                            runningDataOffset += entry.DataSize;// - 1;
-                            if (!addedDataStartOffset)
-                            {
-                                runningDataOffset -= DataStartOffset;
-                                runningDataOffset -= 1;
-                                addedDataStartOffset = true;
-                            }
-                        }
-                        else
-                        {
-                            runningDataOffset += entry.DataSize;
-                        }
-
-                        if (!Header.Condensed)
-                        {
-                            long alignmentPad = GetAlignmentPad(runningDataOffset);
-                            if (runningDataOffset + alignmentPad > uint.MaxValue)
-                            {
-                                runningDataOffset += GetAlignmentPad(runningDataOffset);// - 1;
-                                if (!addedDataStartOffset)
-                                {
-                                    runningDataOffset -= DataStartOffset;
-                                    runningDataOffset -= 1;
-                                    addedDataStartOffset = true;
-                                }
-                            }
-                            else
-                            {
-                                runningDataOffset += GetAlignmentPad(runningDataOffset);
-                            }
-
-                            wrappedRunningDataOffset += entry.DataSize;
-                            wrappedDelta += entry.DataSize;
-
-                            uint wrappedAlignmentPad = GetAlignmentPad(wrappedRunningDataOffset);
-                            wrappedRunningDataOffset += wrappedAlignmentPad;
-                            wrappedDelta += wrappedAlignmentPad;
+                            runningDataOffset += GetAlignmentPad(runningDataOffset);
                         }
                     }
                 }
@@ -321,8 +245,6 @@ namespace RfgTools.Formats.Packfiles
                 return Stream.Null;
 
             var stream = new FileStream(PackfilePath, FileMode.Open, FileAccess.Read);
-            var streamLength = stream.Length;
-            var streamPos = stream.Position;
             stream.Seek(DataStartOffset, SeekOrigin.Begin);
             return stream;
         }
@@ -478,6 +400,7 @@ namespace RfgTools.Formats.Packfiles
             }
         }
 
+        //Todo: Finish this function and test that it works on all vpps & str2s
         public void WriteToBinary(string inputPath, string outputPath, bool compressed = false, bool condensed = false)
         {
             if (!Directory.Exists(inputPath))

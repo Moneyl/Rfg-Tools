@@ -41,7 +41,7 @@ namespace RfgTools.Formats.Packfiles
             //Calculate value as if it was always a uint and the data wrapped.
             //Done this way to attempt to emulate what the game originally stored in files.
             ulong finalDataOffset = DataSize;
-            while (finalDataOffset > uint.MaxValue)
+            while (finalDataOffset > uint.MaxValue) //Todo: Double check that this matches what the game expects
             {
                 finalDataOffset -= uint.MaxValue;
             }
