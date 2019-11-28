@@ -5,7 +5,7 @@ using System.Text;
 
 namespace RfgTools.Dependencies
 {
-    class Squish
+    public class Squish
     {
         [DllImport("squish.dll", EntryPoint = "DecompressImage")]
         private static extern void DecompressRaw([MarshalAs(UnmanagedType.LPArray)] byte[] rgba, uint width, uint height, [MarshalAs(UnmanagedType.LPArray)] byte[] blocks, int flags);
