@@ -122,48 +122,14 @@ namespace RfgTools.Formats.Packfiles
                 //Update offset based on entry size and storage type
                 if (Header.Compressed) //Compressed, not condensed
                 {
-                    if (runningDataOffset + entry.CompressedDataSize > uint.MaxValue)
-                    {
-                        runningDataOffset += entry.CompressedDataSize;
-                    }
-                    else
-                    {
-                        runningDataOffset += entry.CompressedDataSize;
-                    }
-
-                    long alignmentPad = GetAlignmentPad(runningDataOffset);
-                    if (runningDataOffset + alignmentPad > uint.MaxValue)
-                    {
-                        runningDataOffset += alignmentPad;
-                    }
-                    else
-                    {
-                        runningDataOffset += alignmentPad;
-                    }
+                    runningDataOffset += entry.CompressedDataSize;
+                    runningDataOffset += GetAlignmentPad(runningDataOffset);
                 }
                 else //Not compressed, maybe condensed
                 {
-                    if (runningDataOffset + entry.DataSize > uint.MaxValue)
-                    {
-                        runningDataOffset += entry.DataSize;
-                    }
-                    else
-                    {
-                        runningDataOffset += entry.DataSize;
-                    }
-
-                    if (!Header.Condensed)
-                    {
-                        long alignmentPad = GetAlignmentPad(runningDataOffset);
-                        if (runningDataOffset + alignmentPad > uint.MaxValue)
-                        {
-                            runningDataOffset += GetAlignmentPad(runningDataOffset);
-                        }
-                        else
-                        {
-                            runningDataOffset += GetAlignmentPad(runningDataOffset);
-                        }
-                    }
+                    runningDataOffset += entry.DataSize;
+                    if (!Header.Condensed) 
+                        runningDataOffset += GetAlignmentPad(runningDataOffset);
                 }
             }
         }
@@ -220,14 +186,11 @@ namespace RfgTools.Formats.Packfiles
                 packfile.Read(bytes, 0, (int)entry.CompressedDataSize);
                 if (!CompressionHelpers.TryZlibInflate(bytes, entry.DataSize, out byte[] decompressedData, out _))
                     return false;
+
                 File.WriteAllBytes(outputPath, decompressedData);
             }
             else
             {
-                if (subFileName == "terr01_l0.asm_pc")
-                {
-                    var b = 2;
-                }
                 var bytes = new byte[entry.DataSize];
                 packfile.Read(bytes, 0, (int)entry.DataSize);
                 File.WriteAllBytes(outputPath, bytes);
@@ -256,9 +219,9 @@ namespace RfgTools.Formats.Packfiles
                 return;
 
             Stream stream = GetStreamAtDataSectionStart();
-
             Filename = Path.GetFileName(PackfilePath);
             Directory.CreateDirectory(outputPath);
+
             if (Header.Compressed && Header.Condensed)
             {
                 DeserializeCompressedAndCondensed(PackfilePath, outputPath, stream);
@@ -287,7 +250,8 @@ namespace RfgTools.Formats.Packfiles
             byte[] compressedData = new byte[Header.CompressedDataSize];
             packfile.Read(compressedData, 0, (int)Header.CompressedDataSize);
 
-            if (!CompressionHelpers.TryZlibInflate(compressedData, Header.DataSize, out byte[] decompressedData, out int decompressedSizeResult))
+            if (!CompressionHelpers.TryZlibInflate(compressedData, Header.DataSize, out byte[] decompressedData, 
+                out int decompressedSizeResult))
             {
                 string errorString = $"Error while deflating {packfileName}! Decompressed data size is {decompressedSizeResult} " +
                                      $"bytes, while it should be {Header.DataSize} bytes according to header data.";
@@ -302,7 +266,7 @@ namespace RfgTools.Formats.Packfiles
                 if (Verbose)
                     Console.Write("{0}> Extracting {1}...", packfileName, Filenames[i]);
 
-                using var writer = new BinaryWriter(System.IO.File.Create(outputPath + Filenames[i]));
+                using var writer = new BinaryWriter(File.Create(outputPath + Filenames[i]));
                 for (long j = 0; j < entry.DataSize; j++)
                 {
                     writer.Write(decompressedData[decompressedPosition + j]);
@@ -318,35 +282,36 @@ namespace RfgTools.Formats.Packfiles
             PackfilePath = packfilePath;
             var packfile = new BinaryReader(stream);
             string packfileName = Path.GetFileName(packfilePath);
+
             //Inflate block by block
-            foreach (var Entry in DirectoryEntries.Select((Value, Index) => new { Index, Value }))
+            foreach (var entry in DirectoryEntries.Select((value, index) => new { Index = index, Value = value }))
             {
-                if (Verbose)
-                {
-                    Console.Write("{0}> Extracting {1}...", packfileName, Filenames[Entry.Index]);
-                }
-                byte[] compressedData = new byte[Entry.Value.CompressedDataSize];
-                byte[] decompressedData = new byte[Entry.Value.DataSize];
-                packfile.Read(compressedData, 0, (int)Entry.Value.CompressedDataSize);
+                if (Verbose) 
+                    Console.Write("{0}> Extracting {1}...", packfileName, Filenames[entry.Index]);
+                
+                byte[] compressedData = new byte[entry.Value.CompressedDataSize];
+                byte[] decompressedData = new byte[entry.Value.DataSize];
+                packfile.Read(compressedData, 0, (int)entry.Value.CompressedDataSize);
 
                 //Todo: Switch to use CompressionHelpers.TryZlibDeflate()
                 int decompressedSizeResult = 0;
                 using var memory = new MemoryStream(compressedData);
                 using InflaterInputStream inflater = new InflaterInputStream(memory);
-                decompressedSizeResult = inflater.Read(decompressedData, 0, (int)Entry.Value.DataSize);
+                decompressedSizeResult = inflater.Read(decompressedData, 0, (int)entry.Value.DataSize);
 
-                if (decompressedSizeResult != Entry.Value.DataSize)
+                if (decompressedSizeResult != entry.Value.DataSize)
                 {
                     var errorString = new StringBuilder();
                     errorString.AppendFormat(
                         "Error while deflating {0} in {1}! Decompressed data size is {2} bytes, while" +
-                        " it should be {3} bytes according to header data.", Filenames[Entry.Index],
-                        packfileName, decompressedSizeResult, Entry.Value.DataSize);
+                        " it should be {3} bytes according to header data.", Filenames[entry.Index],
+                        packfileName, decompressedSizeResult, entry.Value.DataSize);
                     Console.WriteLine(errorString.ToString());
                     throw new Exception(errorString.ToString());
                 }
-                File.WriteAllBytes(outputPath + Filenames[Entry.Index], decompressedData);
+                File.WriteAllBytes(outputPath + Filenames[entry.Index], decompressedData);
 
+                //Todo: Use GetAlignmentPad here
                 int remainder = (int)(packfile.BaseStream.Position % 2048);
                 if (remainder > 0)
                 {
@@ -364,21 +329,22 @@ namespace RfgTools.Formats.Packfiles
             PackfilePath = packfilePath;
             var packfile = new BinaryReader(stream);
             string packfileName = Path.GetFileName(packfilePath);
+
             //Copy data into individual files
-            foreach (var Entry in DirectoryEntries.Select((Value, Index) => new { Index, Value }))
+            foreach (var entry in DirectoryEntries.Select((value, index) => new { Index = index, Value = value }))
             {
                 if (Verbose)
                 {
-                    Console.Write("{0}> Extracting {1}...", packfileName, Filenames[Entry.Index]);
+                    Console.Write("{0}> Extracting {1}...", packfileName, Filenames[entry.Index]);
                 }
-                byte[] fileData = new byte[Entry.Value.DataSize];
-                packfile.Read(fileData, 0, (int)Entry.Value.DataSize);
-                File.WriteAllBytes(outputPath + Filenames[Entry.Index], fileData);
+                byte[] fileData = new byte[entry.Value.DataSize];
+                packfile.Read(fileData, 0, (int)entry.Value.DataSize);
+                File.WriteAllBytes(outputPath + Filenames[entry.Index], fileData);
 
                 if (!Header.Condensed)
                 {
                     //If you remove the parentheses here you'll break unpacking on terr01_l0.vpp_pc
-
+                    //Todo: Use GetAlignmentPad here
                     int remainder = (int)(packfile.BaseStream.Position % 2048);
                     if (remainder > 0)
                     {
