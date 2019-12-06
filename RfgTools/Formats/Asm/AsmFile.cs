@@ -52,14 +52,16 @@ namespace RfgTools.Formats.Asm
 
         public void WriteToBinary()
         {
-            using var stream = new BinaryWriter(new FileStream(AsmPath, FileMode.Truncate));
-            stream.Write(Signature);
-            stream.Write(Version);
-            stream.Write(ContainerCount);
+            using var stream = new FileStream(AsmPath, FileMode.Truncate);
+            using var writer = new BinaryWriter(stream);
+
+            writer.Write(Signature);
+            writer.Write(Version);
+            writer.Write(ContainerCount);
 
             foreach (var container in Containers)
             {
-                container.WriteToBinary(stream);
+                container.WriteToBinary(writer);
             }
         }
     }
