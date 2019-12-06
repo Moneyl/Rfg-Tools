@@ -26,7 +26,8 @@ namespace RfgTools.Formats.Zones
         /// <param name="inputPath">Path of the file to read the zone data from.</param>
         public void ReadFromBinary(string inputPath)
         {
-            ReadFromBinary(new FileStream(inputPath, FileMode.Open));
+            using var stream = new FileStream(inputPath, FileMode.Open);
+            ReadFromBinary(stream);
         }
 
         /// <summary>
@@ -103,7 +104,8 @@ namespace RfgTools.Formats.Zones
         /// <param name="outputPath">Path to write binary data to.</param>
         public void WriteToBinary(string outputPath)
         {
-            WriteToBinary(new FileStream(outputPath, FileMode.Create));
+            using var stream = new FileStream(outputPath, FileMode.Create);
+            WriteToBinary(stream);
         }
 
         /// <summary>
@@ -141,7 +143,8 @@ namespace RfgTools.Formats.Zones
         /// </summary>
         public void ReadFromXml(string inputPath)
         {
-            var document = XDocument.Load(new FileStream(inputPath, FileMode.Open));
+            using var stream = new FileStream(inputPath, FileMode.Open);
+            var document = XDocument.Load(stream);
             var root = document.Root;
             if (root == null)
                 throw new XmlException($"Input xml doc has no root node! Input path: \"{inputPath}\"");
@@ -185,7 +188,8 @@ namespace RfgTools.Formats.Zones
         public void WriteToXmlAndSave(string outputPath)
         {
             var document = WriteToXml();
-            document.Save(new FileStream(outputPath, FileMode.Create));
+            using var stream = new FileStream(outputPath, FileMode.Create);
+            document.Save(stream);
         }
 
         /// <summary>

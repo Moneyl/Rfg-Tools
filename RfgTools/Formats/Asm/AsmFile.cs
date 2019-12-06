@@ -26,44 +26,40 @@ namespace RfgTools.Formats.Asm
             AsmPath = asmPath;
             AsmFileName = Path.GetFileName(asmPath);
 
-            using (var stream = new BinaryReader(new FileStream(AsmPath, FileMode.Open)))
+            using var stream = new BinaryReader(new FileStream(AsmPath, FileMode.Open));
+            Signature = stream.ReadUInt32();
+            if (Signature != 3203399405)
             {
-                Signature = stream.ReadUInt32();
-                if (Signature != 3203399405)
-                {
-                    throw new Exception($"Invalid file signature detected in {AsmFileName}! Expected 3203399405, read {Signature}. " +
-                                        $"This is usually a sign of file corruption. Make sure that your packfile extractor is not improperly extracting files.");
-                }
+                throw new Exception($"Invalid file signature detected in {AsmFileName}! Expected 3203399405, read {Signature}. " +
+                                    $"This is usually a sign of file corruption. Make sure that your packfile extractor is not improperly extracting files.");
+            }
 
-                Version = stream.ReadUInt16();
-                if (Version != 5)
-                {
-                    throw new Exception($"Unsupported asm_pc format version detected in {AsmFileName}! " +
-                                        $"Expected version 5, found version {Version}.");
-                }
+            Version = stream.ReadUInt16();
+            if (Version != 5)
+            {
+                throw new Exception($"Unsupported asm_pc format version detected in {AsmFileName}! " +
+                                    $"Expected version 5, found version {Version}.");
+            }
 
-                ContainerCount = stream.ReadUInt16();
-                for (int i = 0; i < ContainerCount; i++)
-                {
-                    var container = new AsmContainer();
-                    container.ReadFromBinary(stream);
-                    Containers.Add(container);
-                }
+            ContainerCount = stream.ReadUInt16();
+            for (int i = 0; i < ContainerCount; i++)
+            {
+                var container = new AsmContainer();
+                container.ReadFromBinary(stream);
+                Containers.Add(container);
             }
         }
 
         public void WriteToBinary()
         {
-            using (var stream = new BinaryWriter(new FileStream(AsmPath, FileMode.Truncate)))
-            {
-                stream.Write(Signature);
-                stream.Write(Version);
-                stream.Write(ContainerCount);
+            using var stream = new BinaryWriter(new FileStream(AsmPath, FileMode.Truncate));
+            stream.Write(Signature);
+            stream.Write(Version);
+            stream.Write(ContainerCount);
 
-                foreach (var container in Containers)
-                {
-                    container.WriteToBinary(stream);
-                }
+            foreach (var container in Containers)
+            {
+                container.WriteToBinary(stream);
             }
         }
     }

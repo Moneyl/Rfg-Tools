@@ -64,7 +64,8 @@ namespace RfgTools.Formats.Packfiles
                 Console.WriteLine(packfileName + "> Reading header data...");
             }
 
-            var packfile = new BinaryReader(new FileStream(packfilePath, FileMode.Open));
+            using var stream = new FileStream(packfilePath, FileMode.Open);
+            var packfile = new BinaryReader(stream);
             Header = new PackfileHeader();
             Header.ReadFromBinary(packfile);
 
@@ -176,11 +177,6 @@ namespace RfgTools.Formats.Packfiles
         {
             if (!MetadataWasRead || !ContainsAsmFiles)
                 return;
-
-            if (Path.GetFileName(PackfilePath) == "terr01_l0.vpp_pc")
-            {
-                var a = 2;
-            }
 
             Directory.CreateDirectory(outputPath);
             foreach (var entry in DirectoryEntries)
@@ -306,13 +302,12 @@ namespace RfgTools.Formats.Packfiles
                 if (Verbose)
                     Console.Write("{0}> Extracting {1}...", packfileName, Filenames[i]);
 
-                using (var writer = new BinaryWriter(System.IO.File.Create(outputPath + Filenames[i])))
+                using var writer = new BinaryWriter(System.IO.File.Create(outputPath + Filenames[i]));
+                for (long j = 0; j < entry.DataSize; j++)
                 {
-                    for (long j = 0; j < entry.DataSize; j++)
-                    {
-                        writer.Write(decompressedData[decompressedPosition + j]);
-                    }
+                    writer.Write(decompressedData[decompressedPosition + j]);
                 }
+
                 if (Verbose)
                     Console.WriteLine(" Done!");
             }
@@ -336,13 +331,10 @@ namespace RfgTools.Formats.Packfiles
 
                 //Todo: Switch to use CompressionHelpers.TryZlibDeflate()
                 int decompressedSizeResult = 0;
-                using (var memory = new MemoryStream(compressedData))
-                {
-                    using (InflaterInputStream inflater = new InflaterInputStream(memory))
-                    {
-                        decompressedSizeResult = inflater.Read(decompressedData, 0, (int)Entry.Value.DataSize);
-                    }
-                }
+                using var memory = new MemoryStream(compressedData);
+                using InflaterInputStream inflater = new InflaterInputStream(memory);
+                decompressedSizeResult = inflater.Read(decompressedData, 0, (int)Entry.Value.DataSize);
+
                 if (decompressedSizeResult != Entry.Value.DataSize)
                 {
                     var errorString = new StringBuilder();
@@ -481,7 +473,8 @@ namespace RfgTools.Formats.Packfiles
 
             //Write header, directory block, and names block to disk
             File.Delete(outputPath);
-            var writer = new BinaryWriter(new FileStream(outputPath, FileMode.Create));
+            using var stream = new FileStream(outputPath, FileMode.Create);
+            var writer = new BinaryWriter(stream);
 
             Header.WriteToBinary(writer);
 
@@ -519,13 +512,9 @@ namespace RfgTools.Formats.Packfiles
 
                 int compressedSizeResult = 0;
                 byte[] compressedData = { };
-                using (MemoryStream memory = new MemoryStream(uncompressedDataBlock.ToArray()))
-                {
-                    using (var deflater = new DeflaterOutputStream(memory))
-                    {
-                        compressedSizeResult = deflater.Read(compressedData, 0, Int32.MaxValue);
-                    }
-                }
+                using MemoryStream memory = new MemoryStream(uncompressedDataBlock.ToArray());
+                using var deflater = new DeflaterOutputStream(memory);
+                compressedSizeResult = deflater.Read(compressedData, 0, Int32.MaxValue);
 
                 Header.CompressedDataSize = (uint)compressedSizeResult; //Need to update this in the file after
                 writer.Write(compressedData);
@@ -543,18 +532,9 @@ namespace RfgTools.Formats.Packfiles
 
                         int compressedSizeResult = 0;
                         byte[] compressedData = { };
-                        using (MemoryStream memory = new MemoryStream(subFileData))
-                        {
-                            //using (var deflater = new DeflaterOutputStream(memory))
-                            using (var deflater = new DeflateStream(memory, CompressionLevel.Optimal))
-                            {
-                                //compressedSizeResult = deflater.Read(compressedData, 0, Int32.MaxValue);
-                                compressedData = new byte[deflater.Length];
-                                //deflater.
-                                //var defl = new DeflateStream(memory, CompressionLevel.Optimal);
-                                //deflater.Write(compressedData, 0, (int)deflater.Length);
-                            }
-                        }
+                        using MemoryStream memory = new MemoryStream(subFileData);
+                        using var deflater = new DeflateStream(memory, CompressionLevel.Optimal);
+                        compressedData = new byte[deflater.Length];
 
                         writer.Write(compressedData);
                         int paddingSize = GetAlignmentPad(writer.BaseStream.Position);
