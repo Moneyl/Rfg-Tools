@@ -54,13 +54,9 @@ namespace RfgTools.Formats.Textures
         public void Read(string cpuFilePath, string gpuFilePath)
         {
             SetAndCheckPaths(cpuFilePath, gpuFilePath);
-            using (var cpuFileStream = new FileStream(_cpuFilePath, FileMode.Open))
-            {
-                using (var gpuFileStream = new FileStream(_gpuFilePath, FileMode.Open))
-                {
-                    Read(cpuFileStream, gpuFileStream);
-                }
-            }
+            using var cpuFileStream = new FileStream(_cpuFilePath, FileMode.Open);
+            using var gpuFileStream = new FileStream(_gpuFilePath, FileMode.Open);
+            Read(cpuFileStream, gpuFileStream);
         }
 
         //Todo: Consider adding warnings for unusual, problematic, or unsupported values. Maybe change some existing exceptions to warnings.
@@ -120,13 +116,9 @@ namespace RfgTools.Formats.Textures
         public void Write(string cpuFilePath, string gpuFilePath)
         {
             SetAndCheckPaths(cpuFilePath, gpuFilePath);
-            using (var cpuFileStream = new FileStream(_cpuFilePath, FileMode.Truncate))
-            {
-                using (var gpuFileStream = new FileStream(_gpuFilePath, FileMode.Truncate))
-                {
-                    Write(cpuFileStream, gpuFileStream);
-                }
-            }
+            using var cpuFileStream = new FileStream(_cpuFilePath, FileMode.Truncate);
+            using var gpuFileStream = new FileStream(_gpuFilePath, FileMode.Truncate);
+            Write(cpuFileStream, gpuFileStream);
         }
 
         public void Write(Stream cpuFileStream, Stream gpuFileStream)
