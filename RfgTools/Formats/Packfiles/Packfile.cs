@@ -20,10 +20,6 @@ namespace RfgTools.Formats.Packfiles
         //Directory block
         public List<PackfileEntry> DirectoryEntries = new List<PackfileEntry>();
 
-        //Filenames block
-        public List<string> Filenames = new List<string>();
-
-
         //Data below here is only used by tools, not actually in packfiles
         public bool Verbose = false;
 
@@ -85,8 +81,6 @@ namespace RfgTools.Formats.Packfiles
                     name.Append(packfile.ReadChar());
                 }
                 while (packfile.PeekChar() != 0);
-
-                Filenames.Add(name.ToString());
                 packfile.ReadByte(); //Move past null byte
 
                 if (Path.GetExtension(name.ToString()) == ".asm_pc")
@@ -110,7 +104,7 @@ namespace RfgTools.Formats.Packfiles
         /// </summary>
         private void FixEntryDataOffsets()
         {
-            if (Header.Compressed && Header.Condensed) 
+            if (Header.Compressed && Header.Condensed)
                 return;
 
             long runningDataOffset = 0; //Track relative offset from data section start
@@ -197,14 +191,34 @@ namespace RfgTools.Formats.Packfiles
             return Header != null && !(Header.Compressed && Header.Condensed);
         }
 
+        public bool SubFileExists(string subFileName)
+        {
+            foreach (var entry in DirectoryEntries)
+            {
+                if (entry.FileName == subFileName)
+                    return true;
+            }
+            return false;
+        }
+
+        public int GetSubfileIndex(string subFileName)
+        {
+            for (var i = 0; i < DirectoryEntries.Count; i++)
+            {
+                if (DirectoryEntries[i].FileName == subFileName)
+                    return i;
+            }
+            return -1;
+        }
+
         public bool TryExtractSingleFile(string subFileName, string outputPath)
         {
             if (!CanExtractSingleFile())
                 return false;
-            if (!Filenames.Contains(subFileName) || !MetadataWasRead)
+            if (!SubFileExists(subFileName) || !MetadataWasRead)
                 return false;
 
-            int subFileIndex = Filenames.IndexOf(subFileName);
+            int subFileIndex = GetSubfileIndex(subFileName);
             if (subFileIndex == -1)
                 return false;
 
@@ -300,9 +314,9 @@ namespace RfgTools.Formats.Packfiles
                 var entry = DirectoryEntries[i];
                 long decompressedPosition = entry.DataOffset;
                 if (Verbose)
-                    Console.Write("{0}> Extracting {1}...", packfileName, Filenames[i]);
+                    Console.Write("{0}> Extracting {1}...", packfileName, entry.FileName);
 
-                using var writer = new BinaryWriter(System.IO.File.Create(outputPath + Filenames[i]));
+                using var writer = new BinaryWriter(System.IO.File.Create(outputPath + entry.FileName));
                 for (long j = 0; j < entry.DataSize; j++)
                 {
                     writer.Write(decompressedData[decompressedPosition + j]);
@@ -323,7 +337,7 @@ namespace RfgTools.Formats.Packfiles
             {
                 if (Verbose)
                 {
-                    Console.Write("{0}> Extracting {1}...", packfileName, Filenames[Entry.Index]);
+                    Console.Write("{0}> Extracting {1}...", packfileName, Entry.Value.FileName);
                 }
                 byte[] compressedData = new byte[Entry.Value.CompressedDataSize];
                 byte[] decompressedData = new byte[Entry.Value.DataSize];
@@ -338,14 +352,14 @@ namespace RfgTools.Formats.Packfiles
                 if (decompressedSizeResult != Entry.Value.DataSize)
                 {
                     var errorString = new StringBuilder();
-                    errorString.AppendFormat(
-                        "Error while deflating {0} in {1}! Decompressed data size is {2} bytes, while" +
-                        " it should be {3} bytes according to header data.", Filenames[Entry.Index],
-                        packfileName, decompressedSizeResult, Entry.Value.DataSize);
+                    errorString.Append(
+                        $"Error while deflating {Entry.Value.FileName} in {packfileName}! " +
+                        $"Decompressed data size is {decompressedSizeResult} bytes, while " +
+                        $"it should be {Entry.Value.DataSize} bytes according to header data.");
                     Console.WriteLine(errorString.ToString());
                     throw new Exception(errorString.ToString());
                 }
-                File.WriteAllBytes(outputPath + Filenames[Entry.Index], decompressedData);
+                File.WriteAllBytes(outputPath + Entry.Value.FileName, decompressedData);
 
                 int remainder = (int)(packfile.BaseStream.Position % 2048);
                 if (remainder > 0)
@@ -369,11 +383,11 @@ namespace RfgTools.Formats.Packfiles
             {
                 if (Verbose)
                 {
-                    Console.Write("{0}> Extracting {1}...", packfileName, Filenames[Entry.Index]);
+                    Console.Write("{0}> Extracting {1}...", packfileName, Entry.Value.FileName);
                 }
                 byte[] fileData = new byte[Entry.Value.DataSize];
                 packfile.Read(fileData, 0, (int)Entry.Value.DataSize);
-                File.WriteAllBytes(outputPath + Filenames[Entry.Index], fileData);
+                File.WriteAllBytes(outputPath + Entry.Value.FileName, fileData);
 
                 if (!Header.Condensed)
                 {
@@ -408,7 +422,6 @@ namespace RfgTools.Formats.Packfiles
             //    return;
             //}
 
-            Filenames = new List<string>();
             DirectoryEntries = new List<PackfileEntry>();
 
             //Read input folder and generate header/file data
@@ -419,7 +432,6 @@ namespace RfgTools.Formats.Packfiles
             var inputFolder = new DirectoryInfo(inputPath).GetFiles();
             foreach (var file in inputFolder)
             {
-                Filenames.Add(file.Name);
                 DirectoryEntries.Add(new PackfileEntry
                 {
                     CompressedDataSize = compressed ? 0 : 0xFFFFFFFF, //Not known, set to 0xFFFFFFFF if not compressed //Double check what this should be when C&C 
@@ -429,7 +441,8 @@ namespace RfgTools.Formats.Packfiles
                     NameOffset = currentNameOffset,
                     PackagePointer = 0, //always zero
                     Sector = 0, //always zero
-                    FullPath = file.FullName
+                    FullPath = file.FullName,
+                    FileName = file.Name
                 });
 
                 currentNameOffset += (uint)file.Length + 1;
@@ -487,9 +500,9 @@ namespace RfgTools.Formats.Packfiles
             writer.Write(Enumerable.Repeat((byte)0x0, padding1).ToArray(), 0, padding1);
             //writer.Write(new Byte []{0x0}, 0, GetAlignmentPad(writer.BaseStream.Position));
 
-            foreach (var filename in Filenames)
+            foreach (var entry in DirectoryEntries)
             {
-                writer.Write(filename);
+                writer.Write(entry.FileName);
                 writer.Write(new byte[] { 0x0 });
             }
 
