@@ -23,5 +23,14 @@ namespace OGE.Helpers
 
             return decompressedSizeResult == decompressedDataSize;
         }
+
+        public static long GetCompressionSizeResult(byte[] uncompressedData)
+        {
+            var compressedData = new byte[int.MaxValue / 4]; //Todo: Determine if this needs to be bigger
+            using var memory = new MemoryStream(uncompressedData);
+            using var deflater = new DeflaterOutputStream(memory);
+            deflater.Write(compressedData, 0, uncompressedData.Length);
+            return deflater.Length;
+        }
     }
 }

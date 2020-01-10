@@ -3,12 +3,17 @@ using System.Collections.Generic;
 using System.IO;
 using System.IO.Compression;
 using System.Linq;
+using System.Reflection.Metadata;
 using System.Reflection.PortableExecutable;
 using System.Text;
+using System.Xml;
+using System.Xml.Linq;
 using ICSharpCode.SharpZipLib.Zip.Compression;
 using ICSharpCode.SharpZipLib.Zip.Compression.Streams;
 using OGE.Helpers;
 using RfgTools.Formats.Asm;
+using RfgTools.Helpers;
+using RfgTools.Helpers.Gibbed.IO;
 
 namespace RfgTools.Formats.Packfiles
 {
@@ -275,23 +280,26 @@ namespace RfgTools.Formats.Packfiles
             Directory.CreateDirectory(outputPath);
             if (Header.Compressed && Header.Condensed)
             {
-                DeserializeCompressedAndCondensed(PackfilePath, outputPath, stream);
+                ReadDataCompressedAndCondensed(PackfilePath, outputPath, stream);
             }
             else
             {
                 if (Header.Compressed)
                 {
-                    DeserializeCompressed(PackfilePath, outputPath, stream);
+                    ReadDataCompressed(PackfilePath, outputPath, stream);
                 }
                 else
                 {
-                    DeserializeDefault(PackfilePath, outputPath, stream);
+                    ReadDataDefault(PackfilePath, outputPath, stream);
                 }
             }
             stream.Dispose();
+
+            if(Path.GetExtension(Filename) == ".str2_pc")
+                WriteStreamsFile(Path.GetDirectoryName(outputPath));
         }
 
-        private void DeserializeCompressedAndCondensed(string packfilePath, string outputPath, Stream stream)
+        private void ReadDataCompressedAndCondensed(string packfilePath, string outputPath, Stream stream)
         {
             PackfilePath = packfilePath;
             var packfile = new BinaryReader(stream);
@@ -327,7 +335,7 @@ namespace RfgTools.Formats.Packfiles
             }
         }
 
-        private void DeserializeCompressed(string packfilePath, string outputPath, Stream stream)
+        private void ReadDataCompressed(string packfilePath, string outputPath, Stream stream)
         {
             PackfilePath = packfilePath;
             var packfile = new BinaryReader(stream);
@@ -373,7 +381,7 @@ namespace RfgTools.Formats.Packfiles
             }
         }
 
-        private void DeserializeDefault(string packfilePath, string outputPath, Stream stream)
+        private void ReadDataDefault(string packfilePath, string outputPath, Stream stream)
         {
             PackfilePath = packfilePath;
             var packfile = new BinaryReader(stream);
@@ -406,8 +414,79 @@ namespace RfgTools.Formats.Packfiles
             }
         }
 
+        /// <summary>
+        /// Writes an xml file containing a list of files stored in the packfile.
+        /// Listed in the order that they are stored in the packfile. This is used
+        /// to ensure that str2_pc files and unpacked and repacked with their
+        /// primitives in the same order. If they are not, this will break the game
+        /// as it expects them to be in the order listed in the asm_pc files.
+        /// This uses the same naming convention as gibbeds unpacker,
+        /// a file called @streams.xml, for compatibility.
+        /// </summary>
+        /// <param name="outputFolderPath">Path of of the folder to write the streams file to.</param>
+        public void WriteStreamsFile(string outputFolderPath)
+        {
+            //Xml file representation in memory
+            var xml = new XDocument();
+
+            //Add root node.
+            var root = new XElement("streams", 
+                new XAttribute("endian", "Little"),
+                new XAttribute("compressed", Header.Compressed.ToString()),
+                new XAttribute("condensed", Header.Condensed.ToString()));
+            xml.Add(root);
+
+            //Write entry names
+            foreach (var entry in DirectoryEntries)
+            {
+                var entryNode = new XElement("entry", entry.FileName, new XAttribute("name", entry.FileName));
+                root.Add(entryNode);
+            }
+
+            using var stream = new FileStream($"{outputFolderPath}\\@streams.xml", FileMode.OpenOrCreate);
+            xml.Save(stream);
+        }
+
+        /// <summary>
+        /// Read @streams.xml file written by <see cref="WriteStreamsFile"/>
+        /// </summary>
+        /// <param name="inputFilePath"></param>
+        /// <returns>Returns tuple with data of (bool compressed, bool condensed, List<string> EntryNames</returns>
+        public (bool, bool, List<string>) ReadStreamsFile(string inputFilePath)
+        {
+            using var settingsFileStream = new FileStream(inputFilePath, FileMode.Open);
+            var document = XDocument.Load(settingsFileStream);
+
+            var root = document.Root;
+            if (root == null)
+                throw new XmlException("Error! @streams.xml file has no root node!");
+
+            bool compressed = root.GetRequiredAttributeValue("compressed").ToBool();
+            bool condensed = root.GetRequiredAttributeValue("condensed").ToBool();
+            var entryNames = new List<string>();
+
+            foreach (var entry in root.Elements("entry"))
+            {
+                entryNames.Add(entry.GetRequiredAttributeValue("name"));
+            }
+
+            return (compressed, condensed, entryNames);
+        }
+
         //Todo: Finish this function and test that it works on all vpps & str2s
-        public void WriteToBinary(string inputPath, string outputPath, bool compressed = false, bool condensed = false)
+        //Todo: Make sure that the file order does not change. Must be the same for asm entries to work
+        /// <summary>
+        /// Reads all files in inputPath, and packs them into a packfile saved to outputPath.
+        /// </summary>
+        /// <param name="inputPath">Path of the folder containing the files that should be packed.</param>
+        /// <param name="outputPath">Path and name to save the packfile to.</param>
+        /// <param name="useStreamsFile">If true expects to find a file called @streams.xml in the
+        /// inputPath folder. If true overrides the compressed and condensed arguments. Used to
+        /// ensure that str2_pc files are packed with files in the order that the game expects.
+        /// </param>
+        /// <param name="compressed">Whether or not to compress the file data. Ignored if useStreamsFile is true.</param>
+        /// <param name="condensed">Whether or not to condense the file data. Ignored if useStreamsFile is true.</param>
+        public void WriteToBinary(string inputPath, string outputPath, bool useStreamsFile = false, bool compressed = false, bool condensed = false)
         {
             if (!Directory.Exists(inputPath))
             {
@@ -415,23 +494,42 @@ namespace RfgTools.Formats.Packfiles
                 return;
             }
 
-            Directory.CreateDirectory(Path.GetDirectoryName(outputPath));
-            //if (!File.Exists(outputPath))
-            //{
-            //    Console.WriteLine("The output path provided is not a file. Cannot pack!");
-            //    return;
-            //}
-
             DirectoryEntries = new List<PackfileEntry>();
+            var streamFileEntries = new List<string>();
+            if (useStreamsFile)
+                (compressed, condensed, streamFileEntries) = ReadStreamsFile($"{inputPath}\\@streams.xml");
 
             //Read input folder and generate header/file data
             uint currentNameOffset = 0;
             uint currentDataOffset = 0;
             uint totalNamesSize = 0; //Tracks size of uncompressed data
             uint totalDataSize = 0; //Tracks size of file names
-            var inputFolder = new DirectoryInfo(inputPath).GetFiles();
-            foreach (var file in inputFolder)
+            var inputFiles = new DirectoryInfo(inputPath).GetFiles();
+
+            if (useStreamsFile)
             {
+                //Reorder files in order of streamFileEntries
+                //Ensures order matches asm_pc order.
+                var temporaryEntriesList = new List<FileInfo>();
+                foreach (var entryName in streamFileEntries)
+                {
+                    FileInfo targetEntry = null;
+                    foreach (var entry in inputFiles)
+                    {
+                        if (entry.Name == entryName)
+                            targetEntry = entry;
+                    }
+                    temporaryEntriesList.Add(targetEntry);
+                }
+                inputFiles = temporaryEntriesList.ToArray();
+            }
+
+            foreach (var file in inputFiles)
+            {
+                if(file.Name == "@streams.xml")
+                    continue;
+
+                //Todo: Update data offset for compressed file after compression
                 DirectoryEntries.Add(new PackfileEntry
                 {
                     CompressedDataSize = compressed ? 0 : 0xFFFFFFFF, //Not known, set to 0xFFFFFFFF if not compressed //Double check what this should be when C&C 
@@ -445,14 +543,12 @@ namespace RfgTools.Formats.Packfiles
                     FileName = file.Name
                 });
 
-                currentNameOffset += (uint)file.Length + 1;
-                if (!compressed) //If compressed then the data offset is calc'd during compression
+                currentNameOffset += (uint)file.Name.Length + 1;
+                //if (!compressed) //If compressed then the data offset is calc'd during compression
                 {
                     currentDataOffset += (uint)file.Length;
-                    if (!condensed)
-                    {
+                    if (!condensed) 
                         currentDataOffset += GetAlignmentPad(currentDataOffset);
-                    }
                 }
 
                 totalDataSize += (uint)file.Length;
@@ -460,124 +556,126 @@ namespace RfgTools.Formats.Packfiles
             }
 
             uint packfileFlags = 0;
-            if (compressed)
-            {
-                packfileFlags &= 1;
-            }
-            if (condensed)
-            {
-                packfileFlags &= 2;
-            }
+            if (compressed) 
+                packfileFlags |= 1;
+            if (condensed) 
+                packfileFlags |= 2;
 
-            Header = new PackfileHeader()
+            Header = new PackfileHeader
             {
                 Signature = 0x51890ACE,
                 Version = 3,
                 ShortName = new char[65],
                 PathName = new char[256],
                 Flags = packfileFlags,
-                NumberOfFiles = (uint)inputFolder.Length,
-                FileSize = 0, //Not yet known
-                DirectoryBlockSize = 7 * 4 * (uint)inputFolder.Length,
+                NumberOfFiles = (uint)DirectoryEntries.Count,
+                FileSize = 0, //Not yet known, set after writing file data
+                DirectoryBlockSize = (uint)DirectoryEntries.Count * 28, //Todo: Include pad?
                 FilenameBlockSize = totalNamesSize,
                 DataSize = totalDataSize, //Double check that this doesn't count padding
                 CompressedDataSize = compressed ? 0 : 0xFFFFFFFF, //Not known, set to 0xFFFFFFFF if not compressed
             };
 
-            //Write header, directory block, and names block to disk
-            File.Delete(outputPath);
-            using var stream = new FileStream(outputPath, FileMode.Create);
-            var writer = new BinaryWriter(stream);
+            using var stream = new FileStream(outputPath, FileMode.OpenOrCreate);
+            using var writer = new BinaryWriter(stream);
+            //Skip to data section offset. We write the file data first, then come back
+            //and write the header, entries, and file names
+            int dataOffset = GuessDataOffset();
+            writer.Skip(dataOffset);
 
+            if (compressed && condensed)
+                WriteDataCompressedAndCondensed(writer.BaseStream);
+            else
+            {
+                if (compressed)
+                    WriteDataCompressed(writer);
+                else
+                    WriteDataDefault(writer, condensed);
+            }
+            //Write header
+            Header.FileSize = (uint)writer.BaseStream.Length;
+            writer.Seek(0, SeekOrigin.Begin);
             Header.WriteToBinary(writer);
 
+            //Write entries and names
             foreach (var entry in DirectoryEntries)
             {
                 entry.WriteToBinary(writer);
             }
-
-            int padding1 = GetAlignmentPad(writer.BaseStream.Position);
-            writer.Write(Enumerable.Repeat((byte)0x0, padding1).ToArray(), 0, padding1);
-            //writer.Write(new Byte []{0x0}, 0, GetAlignmentPad(writer.BaseStream.Position));
+            writer.WriteNullBytes(GetAlignmentPad(writer.BaseStream.Position));
 
             foreach (var entry in DirectoryEntries)
             {
-                writer.Write(entry.FileName);
-                writer.Write(new byte[] { 0x0 });
+                writer.WriteNullTerminatedString(entry.FileName);
             }
+            writer.WriteNullBytes(GetAlignmentPad(writer.BaseStream.Position));
+            //Todo: Make use of more helper functions and remove redundant ones
+            //Todo: Ie: Use writer.Align() where possible, and remove dependence on new gibbed helpers
+        }
 
-            int padding2 = GetAlignmentPad(writer.BaseStream.Position);
-            writer.Write(Enumerable.Repeat((byte)0x0, padding2).ToArray(), 0, padding2);
+        private void WriteDataCompressedAndCondensed(Stream stream)
+        {
+            //Todo: Open deflator stream on filestream, repeatedly compress and write each subfile individually to get compressed data size for each
+            var deflater = new Deflater(9);
+            var deflaterStream = new DeflaterOutputStream(stream, deflater);
+            long lastPos = 0;
+            //long currentDataOffset = 0;
 
-            //Start compressing shit and writing it to the disk
-
-            if (compressed && condensed)
+            foreach (var entry in DirectoryEntries)
             {
-                //Compress entire data section as one block
-                var uncompressedDataBlock = new List<byte>();
+                byte[] uncompressedData = File.ReadAllBytes(entry.FullPath);
+                Header.DataSize += (uint)uncompressedData.Length;
+                deflaterStream.Write(uncompressedData);
+                
+                entry.CompressedDataSize = (uint)(deflaterStream.Position - lastPos);
+                //entry.DataOffset = currentDataOffset;
+                //currentDataOffset += entry.CompressedDataSize;
+                lastPos = deflaterStream.Position;
+                Header.CompressedDataSize += entry.CompressedDataSize;
+            }
+        }
 
-                foreach (var entry in DirectoryEntries)
-                {
-                    byte[] subFileData = File.ReadAllBytes(entry.FullPath);
-                    Header.DataSize += (uint)subFileData.Length;
-                    uncompressedDataBlock.AddRange(subFileData);
-                }
+        private void WriteDataCompressed(BinaryWriter writer)
+        {
+            //Compress each file separately with padding
+            foreach (var entry in DirectoryEntries)
+            {
+                byte[] subFileData = File.ReadAllBytes(entry.FullPath);
+                Header.DataSize += (uint)subFileData.Length;
 
-                int compressedSizeResult = 0;
-                byte[] compressedData = { };
-                using MemoryStream memory = new MemoryStream(uncompressedDataBlock.ToArray());
-                using var deflater = new DeflaterOutputStream(memory);
-                compressedSizeResult = deflater.Read(compressedData, 0, Int32.MaxValue);
+                var compressedData = new byte[CompressionHelpers.GetCompressionSizeResult(subFileData)];
+                using var memory = new MemoryStream(subFileData);
+                using var deflater = new DeflateStream(memory, CompressionLevel.Optimal);
+                compressedData = new byte[deflater.Length];
+                //deflater.Read(compressedData, 0, (int)deflater.Length);
+                deflater.Write(compressedData, 0, subFileData.Length);
+                var compressedSizeResult = deflater.Length;
 
-                Header.CompressedDataSize = (uint)compressedSizeResult; //Need to update this in the file after
                 writer.Write(compressedData);
-                //todo: remember to update data size as well
+                int paddingSize = GetAlignmentPad(writer.BaseStream.Position);
+                writer.WriteNullBytes(paddingSize);
+
+                Header.CompressedDataSize += (uint)compressedSizeResult + (uint)paddingSize;
+                entry.CompressedDataSize = (uint)compressedSizeResult;
+                //Todo: remember to update data size as well
             }
-            else
+        }
+
+        private void WriteDataDefault(BinaryWriter writer, bool condensed)
+        {
+            //No compression, pad data if not condensed
+            foreach (var entry in DirectoryEntries)
             {
-                if (compressed)
+                byte[] subFileData = File.ReadAllBytes(entry.FullPath);
+                writer.Write(subFileData);
+                Header.DataSize += (uint)subFileData.Length;
+                if (!condensed)
                 {
-                    //Compress each file separately with padding
-                    foreach (var entry in DirectoryEntries)
-                    {
-                        byte[] subFileData = File.ReadAllBytes(entry.FullPath);
-                        Header.DataSize += (uint)subFileData.Length;
-
-                        int compressedSizeResult = 0;
-                        byte[] compressedData = { };
-                        using MemoryStream memory = new MemoryStream(subFileData);
-                        using var deflater = new DeflateStream(memory, CompressionLevel.Optimal);
-                        compressedData = new byte[deflater.Length];
-
-                        writer.Write(compressedData);
-                        int paddingSize = GetAlignmentPad(writer.BaseStream.Position);
-                        writer.Write(Enumerable.Repeat((byte)0x0, paddingSize).ToArray(), 0, paddingSize);
-
-                        Header.CompressedDataSize += (uint)compressedSizeResult + (uint)paddingSize;
-                        //todo: remember to update data size as well
-                    }
-                }
-                else
-                {
-                    //No compression, pad data if not condensed
-                    foreach (var entry in DirectoryEntries)
-                    {
-                        byte[] subFileData = File.ReadAllBytes(entry.FullPath);
-                        writer.Write(subFileData);
-                        Header.DataSize += (uint)subFileData.Length;
-                        if (!condensed)
-                        {
-                            int paddingSize = GetAlignmentPad(writer.BaseStream.Position);
-                            writer.Write(Enumerable.Repeat((byte)0x0, paddingSize).ToArray(), 0, paddingSize);
-                            Header.DataSize += (uint)paddingSize;
-                        }
-                    }
+                    int paddingSize = GetAlignmentPad(writer.BaseStream.Position);
+                    writer.Write(Enumerable.Repeat((byte)0x0, paddingSize).ToArray(), 0, paddingSize);
+                    Header.DataSize += (uint)paddingSize;
                 }
             }
-
-            //Go back and fill in any previously unknown info like compressed data size and total data size
-            writer.Seek(344, SeekOrigin.Begin); //Seek to FileSize
-            writer.Write(Header.FileSize);
         }
 
         // Full credit for this function goes to gibbed. This is used to generate
@@ -626,6 +724,16 @@ namespace RfgTools.Formats.Packfiles
                 return 2048 - remainder;
             }
             return 0;
+        }
+
+        //From Gibbed.Volition repo: https://github.com/gibbed/Gibbed.Volition
+        public int GuessDataOffset()
+        {
+            int totalSize = 0;
+            totalSize += 2048; //Header size
+            totalSize += (DirectoryEntries.Count * 28).Align(2048); //Entries size
+            totalSize += DirectoryEntries.Sum(entry => entry.FileName.Length + 1).Align(2048); //File names size
+            return totalSize;
         }
     }
 }

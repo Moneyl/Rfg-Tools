@@ -68,6 +68,12 @@ namespace RfgTools.Helpers
             return reader; //Return self so things like Align() can be chained with this.
         }
 
+        public static BinaryWriter Skip(this BinaryWriter writer, long skipDistance)
+        {
+            writer.BaseStream.Seek(skipDistance, SeekOrigin.Current);
+            return writer; //Return self so things like Align() can be chained with this.
+        }
+
         public static void Skip(this Stream stream, long skipDistance)
         {
             stream.Seek(skipDistance, SeekOrigin.Current);
