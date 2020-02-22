@@ -12,14 +12,10 @@ namespace OGE.Helpers
         {
             decompressedData = new byte[decompressedDataSize];
             decompressedSizeResult = 0;
-            
-            using (MemoryStream memory = new MemoryStream(compressedData))
-            {
-                using (InflaterInputStream inflater = new InflaterInputStream(memory))
-                {
-                    decompressedSizeResult = inflater.Read(decompressedData, 0, (int)decompressedDataSize);
-                }
-            }
+
+            using MemoryStream memory = new MemoryStream(compressedData);
+            using InflaterInputStream inflater = new InflaterInputStream(memory);
+            decompressedSizeResult = inflater.Read(decompressedData, 0, (int)decompressedDataSize);
 
             return decompressedSizeResult == decompressedDataSize;
         }

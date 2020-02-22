@@ -572,11 +572,11 @@ namespace RfgTools.Formats.Packfiles
                 FileSize = 0, //Not yet known, set after writing file data
                 DirectoryBlockSize = (uint)DirectoryEntries.Count * 28, //Todo: Include pad?
                 FilenameBlockSize = totalNamesSize,
-                DataSize = totalDataSize, //Double check that this doesn't count padding
+                DataSize = totalDataSize, //Todo: Double check that this doesn't count padding
                 CompressedDataSize = compressed ? 0 : 0xFFFFFFFF, //Not known, set to 0xFFFFFFFF if not compressed
             };
 
-            using var stream = new FileStream(outputPath, FileMode.OpenOrCreate);
+            using var stream = new FileStream(outputPath, FileMode.Create);
             using var writer = new BinaryWriter(stream);
             //Skip to data section offset. We write the file data first, then come back
             //and write the header, entries, and file names
@@ -584,13 +584,19 @@ namespace RfgTools.Formats.Packfiles
             writer.Skip(dataOffset);
 
             if (compressed && condensed)
+            {
                 WriteDataCompressedAndCondensed(writer.BaseStream);
+            }
             else
             {
                 if (compressed)
+                {
                     WriteDataCompressed(writer);
+                }
                 else
+                {
                     WriteDataDefault(writer, condensed);
+                }
             }
             //Write header
             Header.FileSize = (uint)writer.BaseStream.Length;
@@ -616,24 +622,51 @@ namespace RfgTools.Formats.Packfiles
         private void WriteDataCompressedAndCondensed(Stream stream)
         {
             //Todo: Open deflator stream on filestream, repeatedly compress and write each subfile individually to get compressed data size for each
-            var deflater = new Deflater(9);
-            var deflaterStream = new DeflaterOutputStream(stream, deflater);
-            long lastPos = 0;
+            //var deflater = new Deflater(Deflater.BEST_COMPRESSION);
+            //var deflaterStream = new DeflaterOutputStream(stream, deflater);
+            //long lastPos = stream.Position;
             //long currentDataOffset = 0;
 
+            //foreach (var entry in DirectoryEntries)
+            //{
+            //    byte[] uncompressedData = File.ReadAllBytes(entry.FullPath);
+            //    //Header.DataSize += (uint)uncompressedData.Length;
+            //    deflaterStream.Write(uncompressedData, 0, uncompressedData.Length);
+            //    //deflaterStream.Flush();
+
+
+            //    entry.CompressedDataSize = (uint) (deflaterStream.Position - lastPos);
+            //    //entry.DataOffset = currentDataOffset;
+            //    //currentDataOffset += entry.CompressedDataSize;
+            //    lastPos = deflaterStream.Position;
+            //    Header.CompressedDataSize += entry.CompressedDataSize;
+            //}
+
+            long lastPos = stream.Position;
+            using var deflateStream = new DeflateStream(stream, CompressionLevel.Optimal, true);
+            //NOTE: Change this if compression level changes
+            //Write zlib headers because DeflateStream doesn't do this for some reason... 
+            stream.WriteByte(0x78);
+            stream.WriteByte(0xDA);
             foreach (var entry in DirectoryEntries)
             {
                 byte[] uncompressedData = File.ReadAllBytes(entry.FullPath);
-                Header.DataSize += (uint)uncompressedData.Length;
-                deflaterStream.Write(uncompressedData);
-                
-                entry.CompressedDataSize = (uint)(deflaterStream.Position - lastPos);
-                //entry.DataOffset = currentDataOffset;
-                //currentDataOffset += entry.CompressedDataSize;
-                lastPos = deflaterStream.Position;
+                deflateStream.Write(uncompressedData);
+                deflateStream.Flush();
+
+                entry.CompressedDataSize = (uint)(stream.Position - lastPos);
+                lastPos = stream.Position;
                 Header.CompressedDataSize += entry.CompressedDataSize;
             }
+            //Manually add header bytes size
+            DirectoryEntries[0].CompressedDataSize += 2;
+            Header.CompressedDataSize += 2;
         }
+        /*
+         * a:
+         *  File size: +19373
+         *  Compressed size: +13229
+         */
 
         private void WriteDataCompressed(BinaryWriter writer)
         {
@@ -641,7 +674,7 @@ namespace RfgTools.Formats.Packfiles
             foreach (var entry in DirectoryEntries)
             {
                 byte[] subFileData = File.ReadAllBytes(entry.FullPath);
-                Header.DataSize += (uint)subFileData.Length;
+                //Header.DataSize += (uint)subFileData.Length;
 
                 var compressedData = new byte[CompressionHelpers.GetCompressionSizeResult(subFileData)];
                 using var memory = new MemoryStream(subFileData);
@@ -668,7 +701,7 @@ namespace RfgTools.Formats.Packfiles
             {
                 byte[] subFileData = File.ReadAllBytes(entry.FullPath);
                 writer.Write(subFileData);
-                Header.DataSize += (uint)subFileData.Length;
+                //Header.DataSize += (uint)subFileData.Length;
                 if (!condensed)
                 {
                     int paddingSize = GetAlignmentPad(writer.BaseStream.Position);
