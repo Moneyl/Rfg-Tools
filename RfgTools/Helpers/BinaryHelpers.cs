@@ -39,7 +39,7 @@ namespace RfgTools.Helpers
             return stream.ReadFixedLengthString((int)length);
         }
 
-        public static void Align(this BinaryReader reader, long alignmentValue)
+        public static int Align(this BinaryReader reader, long alignmentValue = 2048)
         {
             long position = reader.BaseStream.Position;
             int remainder = (int)(position % alignmentValue);
@@ -52,7 +52,8 @@ namespace RfgTools.Helpers
             {
                 paddingSize = 0;
             }
-            reader.BaseStream.Seek(paddingSize, SeekOrigin.Current);
+            reader.Skip(paddingSize);
+            return paddingSize;
         }
 
         public static ushort PeekUshort(this BinaryReader reader)
@@ -169,9 +170,38 @@ namespace RfgTools.Helpers
             reader.Skip(skipDistance);
         }
 
+        //Stream extension functions
+        public static int GetAlignmentPad(this Stream stream, long alignmentValue = 2048)
+        {
+            int remainder = (int)(stream.Position % 2048);
+            if (remainder > 0)
+            {
+                return 2048 - remainder;
+            }
+            return 0;
+        }
 
+        public static uint GetAlignmentPad(this Stream stream, uint alignmentValue = 2048)
+        {
+            uint remainder = ((uint)stream.Position) % 2048;
+            if (remainder > 0)
+            {
+                return 2048 - remainder;
+            }
+            return 0;
+        }
 
         //BinaryWriter extension functions
+        public static int GetAlignmentPad(this BinaryWriter writer, long alignmentValue = 2048)
+        {
+            return writer.BaseStream.GetAlignmentPad(alignmentValue);
+        }
+
+        public static uint GetAlignmentPad(this BinaryWriter writer, uint alignmentValue = 2048)
+        {
+            return writer.BaseStream.GetAlignmentPad(alignmentValue);
+        }
+
         public static BinaryWriter WriteAsciiString(this BinaryWriter writer, String stringOut, bool nullTerminate)
         {
             byte[] bytes = Encoding.ASCII.GetBytes(stringOut);
@@ -184,21 +214,19 @@ namespace RfgTools.Helpers
             return writer;
         }
 
-        public static void Align(this BinaryWriter writer, long alignmentValue)
+        public static int Align(this BinaryWriter writer, long alignmentValue = 2048)
         {
             long position = writer.BaseStream.Position;
             int remainder = (int)(position % alignmentValue);
+            
             int paddingSize = 0;
             if (remainder > 0)
-            {
                 paddingSize = (int)alignmentValue - remainder;
-            }
             else
-            {
                 paddingSize = 0;
-            }
 
             writer.Write(Enumerable.Repeat((byte)0x0, paddingSize).ToArray(), 0, paddingSize);
+            return paddingSize;
         }
 
         public static void WriteNullBytes(this BinaryWriter writer, long numBytesToWrite)
@@ -287,6 +315,18 @@ namespace RfgTools.Helpers
             }
 
             return paddingSize;
+        }
+
+
+        //Misc helpers
+        public static int GetAlignmentPad(long position)
+        {
+            int remainder = (int)(position % 2048);
+            if (remainder > 0)
+            {
+                return 2048 - remainder;
+            }
+            return 0;
         }
     }
 }

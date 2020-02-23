@@ -3,17 +3,14 @@ using System.Collections.Generic;
 using System.IO;
 using System.IO.Compression;
 using System.Linq;
-using System.Reflection.Metadata;
-using System.Reflection.PortableExecutable;
 using System.Text;
 using System.Xml;
 using System.Xml.Linq;
-using ICSharpCode.SharpZipLib.Zip.Compression;
-using ICSharpCode.SharpZipLib.Zip.Compression.Streams;
 using OGE.Helpers;
 using RfgTools.Formats.Asm;
 using RfgTools.Helpers;
 using RfgTools.Helpers.Gibbed.IO;
+using RfgTools.Helpers.Gibbed.Volition.FileFormats;
 
 namespace RfgTools.Formats.Packfiles
 {
@@ -130,7 +127,7 @@ namespace RfgTools.Formats.Packfiles
                         runningDataOffset += entry.CompressedDataSize;
                     }
 
-                    long alignmentPad = GetAlignmentPad(runningDataOffset);
+                    long alignmentPad = BinaryHelpers.GetAlignmentPad(runningDataOffset);
                     if (runningDataOffset + alignmentPad > uint.MaxValue)
                     {
                         runningDataOffset += alignmentPad;
@@ -153,14 +150,14 @@ namespace RfgTools.Formats.Packfiles
 
                     if (!Header.Condensed)
                     {
-                        long alignmentPad = GetAlignmentPad(runningDataOffset);
+                        long alignmentPad = BinaryHelpers.GetAlignmentPad(runningDataOffset);
                         if (runningDataOffset + alignmentPad > uint.MaxValue)
                         {
-                            runningDataOffset += GetAlignmentPad(runningDataOffset);
+                            runningDataOffset += BinaryHelpers.GetAlignmentPad(runningDataOffset);
                         }
                         else
                         {
-                            runningDataOffset += GetAlignmentPad(runningDataOffset);
+                            runningDataOffset += BinaryHelpers.GetAlignmentPad(runningDataOffset);
                         }
                     }
                 }
@@ -352,10 +349,15 @@ namespace RfgTools.Formats.Packfiles
                 packfile.Read(compressedData, 0, (int)Entry.Value.CompressedDataSize);
 
                 //Todo: Switch to use CompressionHelpers.TryZlibDeflate()
-                int decompressedSizeResult = 0;
-                using var memory = new MemoryStream(compressedData);
-                using InflaterInputStream inflater = new InflaterInputStream(memory);
-                decompressedSizeResult = inflater.Read(decompressedData, 0, (int)Entry.Value.DataSize);
+                //int decompressedSizeResult = 0;
+                //using var memory = new MemoryStream(compressedData);
+                //using InflaterInputStream inflater = new InflaterInputStream(memory);
+                //decompressedSizeResult = inflater.Read(decompressedData, 0, (int)Entry.Value.DataSize);
+
+                if (!CompressionHelpers.TryZlibInflate(compressedData, (uint)decompressedData.Length, out decompressedData, out int decompressedSizeResult))
+                {
+                    throw new Exception($"Error while deflating {Entry.Value.FileName} in {packfileName}! Failed to inflate!");
+                }
 
                 if (decompressedSizeResult != Entry.Value.DataSize)
                 {
@@ -369,11 +371,13 @@ namespace RfgTools.Formats.Packfiles
                 }
                 File.WriteAllBytes(outputPath + Entry.Value.FileName, decompressedData);
 
-                int remainder = (int)(packfile.BaseStream.Position % 2048);
-                if (remainder > 0)
-                {
-                    packfile.ReadBytes(2048 - remainder); //Alignment Padding
-                }
+                packfile.Align();
+                //int remainder = (int)(packfile.BaseStream.Position % 2048);
+                //int padding = GetAlignmentPad(packfile.BaseStream.Position);
+                //if (padding > 0)
+                //{
+                //    packfile.Skip(padding); //Alignment Padding
+                //}
                 if (Verbose)
                 {
                     Console.WriteLine(" Done!");
@@ -508,8 +512,7 @@ namespace RfgTools.Formats.Packfiles
 
             if (useStreamsFile)
             {
-                //Reorder files in order of streamFileEntries
-                //Ensures order matches asm_pc order.
+                //Reorder files in order of streamFileEntries. Ensures order matches asm_pc order.
                 var temporaryEntriesList = new List<FileInfo>();
                 foreach (var entryName in streamFileEntries)
                 {
@@ -524,17 +527,19 @@ namespace RfgTools.Formats.Packfiles
                 inputFiles = temporaryEntriesList.ToArray();
             }
 
+            using var stream = new FileStream(outputPath, FileMode.Create);
+            using var writer = new BinaryWriter(stream);
+
             foreach (var file in inputFiles)
             {
                 if(file.Name == "@streams.xml")
                     continue;
 
-                //Todo: Update data offset for compressed file after compression
                 DirectoryEntries.Add(new PackfileEntry
                 {
                     CompressedDataSize = compressed ? 0 : 0xFFFFFFFF, //Not known, set to 0xFFFFFFFF if not compressed //Double check what this should be when C&C 
                     DataOffset = currentDataOffset,
-                    NameHash = HashVolitionString(file.Name),
+                    NameHash = file.Name.HashVolition(),
                     DataSize = (uint)file.Length,
                     NameOffset = currentNameOffset,
                     PackagePointer = 0, //always zero
@@ -543,13 +548,11 @@ namespace RfgTools.Formats.Packfiles
                     FileName = file.Name
                 });
 
+                //Update name and data offsets
                 currentNameOffset += (uint)file.Name.Length + 1;
-                //if (!compressed) //If compressed then the data offset is calc'd during compression
-                {
-                    currentDataOffset += (uint)file.Length;
-                    if (!condensed) 
-                        currentDataOffset += GetAlignmentPad(currentDataOffset);
-                }
+                currentDataOffset += (uint)file.Length;
+                if (!condensed)
+                    currentDataOffset += writer.GetAlignmentPad(currentDataOffset);
 
                 totalDataSize += (uint)file.Length;
                 totalNamesSize += (uint)file.Name.Length + 1;
@@ -570,14 +573,12 @@ namespace RfgTools.Formats.Packfiles
                 Flags = packfileFlags,
                 NumberOfFiles = (uint)DirectoryEntries.Count,
                 FileSize = 0, //Not yet known, set after writing file data
-                DirectoryBlockSize = (uint)DirectoryEntries.Count * 28, //Todo: Include pad?
+                DirectoryBlockSize = (uint)DirectoryEntries.Count * 28, //Todo: Include padding?
                 FilenameBlockSize = totalNamesSize,
                 DataSize = totalDataSize, //Todo: Double check that this doesn't count padding
                 CompressedDataSize = compressed ? 0 : 0xFFFFFFFF, //Not known, set to 0xFFFFFFFF if not compressed
             };
 
-            using var stream = new FileStream(outputPath, FileMode.Create);
-            using var writer = new BinaryWriter(stream);
             //Skip to data section offset. We write the file data first, then come back
             //and write the header, entries, and file names
             int dataOffset = GuessDataOffset();
@@ -591,7 +592,7 @@ namespace RfgTools.Formats.Packfiles
             {
                 if (compressed)
                 {
-                    WriteDataCompressed(writer);
+                    WriteDataCompressed(writer.BaseStream);
                 }
                 else
                 {
@@ -608,89 +609,76 @@ namespace RfgTools.Formats.Packfiles
             {
                 entry.WriteToBinary(writer);
             }
-            writer.WriteNullBytes(GetAlignmentPad(writer.BaseStream.Position));
+            writer.Align();
 
             foreach (var entry in DirectoryEntries)
             {
                 writer.WriteNullTerminatedString(entry.FileName);
             }
-            writer.WriteNullBytes(GetAlignmentPad(writer.BaseStream.Position));
-            //Todo: Make use of more helper functions and remove redundant ones
-            //Todo: Ie: Use writer.Align() where possible, and remove dependence on new gibbed helpers
+            writer.Align();
         }
 
         private void WriteDataCompressedAndCondensed(Stream stream)
         {
-            //Todo: Open deflator stream on filestream, repeatedly compress and write each subfile individually to get compressed data size for each
-            //var deflater = new Deflater(Deflater.BEST_COMPRESSION);
-            //var deflaterStream = new DeflaterOutputStream(stream, deflater);
-            //long lastPos = stream.Position;
-            //long currentDataOffset = 0;
-
-            //foreach (var entry in DirectoryEntries)
-            //{
-            //    byte[] uncompressedData = File.ReadAllBytes(entry.FullPath);
-            //    //Header.DataSize += (uint)uncompressedData.Length;
-            //    deflaterStream.Write(uncompressedData, 0, uncompressedData.Length);
-            //    //deflaterStream.Flush();
-
-
-            //    entry.CompressedDataSize = (uint) (deflaterStream.Position - lastPos);
-            //    //entry.DataOffset = currentDataOffset;
-            //    //currentDataOffset += entry.CompressedDataSize;
-            //    lastPos = deflaterStream.Position;
-            //    Header.CompressedDataSize += entry.CompressedDataSize;
-            //}
-
             long lastPos = stream.Position;
-            using var deflateStream = new DeflateStream(stream, CompressionLevel.Optimal, true);
+
             //NOTE: Change this if compression level changes
             //Write zlib headers because DeflateStream doesn't do this for some reason... 
-            stream.WriteByte(0x78);
-            stream.WriteByte(0xDA);
-            foreach (var entry in DirectoryEntries)
-            {
-                byte[] uncompressedData = File.ReadAllBytes(entry.FullPath);
-                deflateStream.Write(uncompressedData);
-                deflateStream.Flush();
+            stream.Write(new byte[] { 0x78, 0xDA });
 
-                entry.CompressedDataSize = (uint)(stream.Position - lastPos);
-                lastPos = stream.Position;
-                Header.CompressedDataSize += entry.CompressedDataSize;
+            using (var deflateStream = new DeflateStream(stream, CompressionLevel.Optimal, true))
+            {
+                //Compress each subfile
+                foreach (var entry in DirectoryEntries)
+                {
+                    byte[] uncompressedData = File.ReadAllBytes(entry.FullPath);
+                    deflateStream.Write(uncompressedData);
+                    deflateStream.Flush();
+
+                    entry.CompressedDataSize = (uint)(stream.Position - lastPos);
+                    lastPos = stream.Position;
+                    Header.CompressedDataSize += entry.CompressedDataSize;
+                }
             }
+
             //Manually add header bytes size
             DirectoryEntries[0].CompressedDataSize += 2;
             Header.CompressedDataSize += 2;
-        }
-        /*
-         * a:
-         *  File size: +19373
-         *  Compressed size: +13229
-         */
 
-        private void WriteDataCompressed(BinaryWriter writer)
+            //DeflateStream writes 2 bytes of junk once it's disposed. No idea why, but this is to fix that.
+            if (stream.Position != lastPos)
+                stream.SetLength(lastPos);
+        }
+
+        private void WriteDataCompressed(Stream stream)
         {
-            //Compress each file separately with padding
+            long lastPos = stream.Position;
+            using var writer = new BinaryWriter(stream, Encoding.Default, true);
+
+            //Compress each subfile
             foreach (var entry in DirectoryEntries)
             {
-                byte[] subFileData = File.ReadAllBytes(entry.FullPath);
-                //Header.DataSize += (uint)subFileData.Length;
+                using (var deflateStream = new DeflateStream(stream, CompressionLevel.Optimal, true))
+                {
+                    //NOTE: Change this if compression level changes
+                    //Write zlib headers because DeflateStream doesn't do this for some reason... 
+                    stream.Write(new byte[] { 0x78, 0xDA });
 
-                var compressedData = new byte[CompressionHelpers.GetCompressionSizeResult(subFileData)];
-                using var memory = new MemoryStream(subFileData);
-                using var deflater = new DeflateStream(memory, CompressionLevel.Optimal);
-                compressedData = new byte[deflater.Length];
-                //deflater.Read(compressedData, 0, (int)deflater.Length);
-                deflater.Write(compressedData, 0, subFileData.Length);
-                var compressedSizeResult = deflater.Length;
+                    //Compress data from each subfile and write to file
+                    byte[] uncompressedData = File.ReadAllBytes(entry.FullPath);
+                    deflateStream.Write(uncompressedData);
+                    deflateStream.Flush();
 
-                writer.Write(compressedData);
-                int paddingSize = GetAlignmentPad(writer.BaseStream.Position);
-                writer.WriteNullBytes(paddingSize);
-
-                Header.CompressedDataSize += (uint)compressedSizeResult + (uint)paddingSize;
-                entry.CompressedDataSize = (uint)compressedSizeResult;
-                //Todo: remember to update data size as well
+                    //Write padding bytes and track size (padding doesn't count for total compressed data size)
+                    entry.CompressedDataSize = (uint)(stream.Position - lastPos); //Don't count padding
+                    Header.CompressedDataSize += entry.CompressedDataSize;
+                    
+                    writer.Align();
+                    lastPos = stream.Position;
+                }
+                //DeflateStream writes 2 bytes of junk once it's disposed. No idea why, but this is to fix that.
+                if (stream.Position != lastPos)
+                    stream.Seek(lastPos, SeekOrigin.Begin);
             }
         }
 
@@ -701,62 +689,10 @@ namespace RfgTools.Formats.Packfiles
             {
                 byte[] subFileData = File.ReadAllBytes(entry.FullPath);
                 writer.Write(subFileData);
-                //Header.DataSize += (uint)subFileData.Length;
-                if (!condensed)
-                {
-                    int paddingSize = GetAlignmentPad(writer.BaseStream.Position);
-                    writer.Write(Enumerable.Repeat((byte)0x0, paddingSize).ToArray(), 0, paddingSize);
-                    Header.DataSize += (uint)paddingSize;
-                }
-            }
-        }
 
-        // Full credit for this function goes to gibbed. This is used to generate
-        // the filename hashes while packing packfiles. Link to this function in
-        // his code: https://github.com/gibbed/Gibbed.Volition/blob/d2da5c26ccf1d09726ff4c58b81ae709b89b8db5/projects/Gibbed.Volition.FileFormats/StringHelpers.cs#L68
-        public static uint HashVolitionString(string input)
-        {
-            input = input.ToLowerInvariant();
-
-            uint hash = 0;
-            for (int i = 0; i < input.Length; i++)
-            {
-                // rotate left by 6
-                hash = (hash << 6) | (hash >> (32 - 6));
-                hash = (char)(input[i]) ^ hash;
+                if (!condensed) 
+                    Header.DataSize += (uint) writer.Align();
             }
-            return hash;
-        }
-
-        //Todo: Move these into relevant helpers/namespaces
-        int GetAlignmentPad(int position)
-        {
-            int remainder = position % 2048;
-            if (remainder > 0)
-            {
-                return 2048 - remainder;
-            }
-            return 0;
-        }
-
-        int GetAlignmentPad(long position)
-        {
-            int remainder = (int)(position % 2048);
-            if (remainder > 0)
-            {
-                return 2048 - remainder;
-            }
-            return 0;
-        }
-
-        uint GetAlignmentPad(uint position)
-        {
-            uint remainder = position % 2048;
-            if (remainder > 0)
-            {
-                return 2048 - remainder;
-            }
-            return 0;
         }
 
         //From Gibbed.Volition repo: https://github.com/gibbed/Gibbed.Volition
