@@ -477,8 +477,6 @@ namespace RfgTools.Formats.Packfiles
             return (compressed, condensed, entryNames);
         }
 
-        //Todo: Finish this function and test that it works on all vpps & str2s
-        //Todo: Make sure that the file order does not change. Must be the same for asm entries to work
         /// <summary>
         /// Reads all files in inputPath, and packs them into a packfile saved to outputPath.
         /// </summary>
@@ -618,6 +616,7 @@ namespace RfgTools.Formats.Packfiles
             writer.Align();
         }
 
+        //Todo: Fix this case. Maybe try switching zlib library used to the one used by gibbed's tools
         private void WriteDataCompressedAndCondensed(Stream stream)
         {
             long lastPos = stream.Position;
