@@ -582,21 +582,14 @@ namespace RfgTools.Formats.Packfiles
             int dataOffset = GuessDataOffset();
             writer.Skip(dataOffset);
 
-            if (compressed && condensed)
-            {
+            //Write subfile data
+            if(compressed && condensed)
                 WriteDataCompressedAndCondensed(writer.BaseStream);
-            }
+            else if(compressed)
+                WriteDataCompressed(writer.BaseStream);
             else
-            {
-                if (compressed)
-                {
-                    WriteDataCompressed(writer.BaseStream);
-                }
-                else
-                {
-                    WriteDataDefault(writer, condensed);
-                }
-            }
+                WriteDataDefault(writer, condensed);
+
             //Write header
             Header.FileSize = (uint)writer.BaseStream.Length;
             writer.Seek(0, SeekOrigin.Begin);
