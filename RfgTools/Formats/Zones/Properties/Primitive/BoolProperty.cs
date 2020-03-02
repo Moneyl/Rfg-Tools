@@ -337,4 +337,16 @@ namespace RfgTools.Formats.Zones.Properties.Primitive
     {
         public override string Name { get; protected set; } = "random_backpacks";
     }
+
+    [Property("liberated", 5)]
+    class LiberatedProperty : BoolProperty
+    {
+        public override string Name { get; protected set; } = "liberated";
+    }
+
+    [Property("liberated_play_line", 5)]
+    class LiberatedPlayLineProperty : BoolProperty
+    {
+        public override string Name { get; protected set; } = "liberated_play_line";
+    }
 }
