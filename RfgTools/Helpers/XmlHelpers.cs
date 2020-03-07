@@ -106,6 +106,11 @@ namespace RfgTools.Helpers
             return result.Value;
         }
 
+        public static bool Contains(this XElement element, string targetName)
+        {
+            return element.Element(targetName) != null;
+        }
+
 
 
         public static vector2f ToVector2f(this XElement element)
