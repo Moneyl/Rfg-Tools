@@ -175,4 +175,28 @@ namespace RfgTools.Formats.Zones.Properties.Primitive
     {
         public override string Name { get; protected set; } = "atten_start";
     }
+
+    [Property("control", 5)]
+    class ControlProperty : FloatProperty
+    {
+        public override string Name { get; protected set; } = "control";
+    }
+
+    [Property("control_max", 5)]
+    class ControlMaxProperty : FloatProperty
+    {
+        public override string Name { get; protected set; } = "control_max";
+    }
+
+    [Property("morale", 5)]
+    class MoraleProperty : FloatProperty
+    {
+        public override string Name { get; protected set; } = "morale";
+    }
+
+    [Property("morale_max", 5)]
+    class MoraleMaxProperty : FloatProperty
+    {
+        public override string Name { get; protected set; } = "morale_max";
+    }
 }

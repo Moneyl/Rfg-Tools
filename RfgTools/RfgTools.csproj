@@ -1,14 +1,9 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>netcoreapp3.0</TargetFramework>
+    <TargetFramework>netcoreapp3.1</TargetFramework>
     <Platforms>AnyCPU;x86</Platforms>
   </PropertyGroup>
-
-  <ItemGroup>
-    <Folder Include="Types\" />
-    <Folder Include="Formats\Zones\" />
-  </ItemGroup>
 
   <ItemGroup>
     <PackageReference Include="SharpZipLib" Version="1.2.0" />

@@ -20,6 +20,8 @@ namespace RfgTools.Formats.Zones
 
         public List<ZoneObject> Objects = new List<ZoneObject>();
 
+        public string DistrictName { get; private set; } = "Unknown district name";
+
         /// <summary>
         /// Attempt to read the rfgzone_pc/layer_pc format from the file at this path. Handles making the stream.
         /// </summary>
@@ -54,7 +56,11 @@ namespace RfgTools.Formats.Zones
             NumObjects = reader.ReadUInt32();
             NumHandles = reader.ReadUInt32();
             DistrictHash = reader.ReadUInt32(); //Todo: Figure out how district hashes are generated
-            DistrictFlags = reader.ReadUInt32(); 
+            DistrictFlags = reader.ReadUInt32();
+
+            //Try to get district name from hash. Note that p_ files always have 0 for the hash. Game likely pulls from matching non p_ file
+            if(HashGuesser.TryGuessHashString(DistrictHash, out string districtName))
+                DistrictName = districtName;
 
             //Todo: Make sure it's safe to skip this on zones with numHandles != 0
             //Todo: Try deleting relational data on all zones and seeing if that causes an issue.
