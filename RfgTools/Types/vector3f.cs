@@ -1,4 +1,6 @@
 ﻿using System;
+using System.IO;
+using System.Text;
 using System.Xml.Linq;
 
 namespace RfgTools.Types
@@ -8,6 +10,11 @@ namespace RfgTools.Types
         public float x;
         public float y;
         public float z;
+
+        public vector3f()
+        {
+
+        }
 
         public vector3f(float x, float y, float z)
         {
