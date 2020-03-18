@@ -75,6 +75,29 @@ namespace RfgTools.Helpers
             return writer; //Return self so things like Align() can be chained with this.
         }
 
+        public static float FitRange(this float val, float min, float max)
+        {
+            if (val < min)
+                val = min;
+            if (val > max)
+                val = max;
+
+            return val;
+        }
+
+        public static void WriteCompressedVector4f(this BinaryWriter writer, vector4f vec4)
+        {
+            float x = ((vec4.x / 2.0f) + 0.5f).FitRange(0.0f, 1.0f);
+            float y = ((vec4.y / 2.0f) + 0.5f).FitRange(0.0f, 1.0f);
+            float z = ((vec4.z / 2.0f) + 0.5f).FitRange(0.0f, 1.0f);
+            float w = ((vec4.w / 2.0f) + 0.5f).FitRange(0.0f, 1.0f);
+                                             
+            writer.Write((byte)Math.Round(w * 255.0f));
+            writer.Write((byte)Math.Round(z * 255.0f));
+            writer.Write((byte)Math.Round(y * 255.0f));
+            writer.Write((byte)Math.Round(x * 255.0f));
+        }
+
         public static void Skip(this Stream stream, long skipDistance)
         {
             stream.Seek(skipDistance, SeekOrigin.Current);
@@ -87,6 +110,25 @@ namespace RfgTools.Helpers
             data.Add(new XElement("y", reader.ReadSingle()));
             data.Add(new XElement("z", reader.ReadSingle()));
             return data;
+        }
+
+        public static vector4f ReadCompressedVector4f(this BinaryReader reader)
+        {
+            byte x_compressed = reader.ReadByte();
+            byte y_compressed = reader.ReadByte();
+            byte z_compressed = reader.ReadByte();
+            byte w_compressed = reader.ReadByte();
+
+            return new vector4f(
+                2.0f * (x_compressed / 255.0f - 0.5f),
+                2.0f * (y_compressed / 255.0f - 0.5f),
+                2.0f * (z_compressed / 255.0f - 0.5f),
+                2.0f * (w_compressed / 255.0f - 0.5f));
+        }
+
+        public static vector4f ReadVector4f(this BinaryReader reader)
+        {
+            return new vector4f(reader.ReadSingle(), reader.ReadSingle(), reader.ReadSingle(), reader.ReadSingle());
         }
 
         public static vector3f ReadVector3f(this BinaryReader reader)
@@ -158,10 +200,8 @@ namespace RfgTools.Helpers
                 }
                 return true;
             }
-            else
-            {
-                return false;
-            }
+
+            return false;
         }
 
         public static void SeekAndSkip(this BinaryReader reader, long seekPos, long skipDistance)

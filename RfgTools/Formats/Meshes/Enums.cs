@@ -20,12 +20,21 @@ namespace RfgTools.Formats.Meshes
         Invalid = 255
     }
 
+    //public enum PrimitiveTopology : byte
+    //{
+    //    TriangleStrip = 0,
+    //    LineList = 1,
+    //    TriangleList = 2,
+    //    PointList = 3,
+    //}
+
+    //Above is list pulled from game, this is what is believed to be more accurate based on decompilation
     public enum PrimitiveTopology : byte
     {
-        TriangleStrip = 0,
-        LineList = 1,
-        TriangleList = 2,
-        PointList = 3,
+        TriangleStrip = 0, //internally D3D10_PRIMITIVE_TOPOLOGY_TRIANGLESTRIP
+        //LineList = 1,
+        TriangleList = 1, //internally D3D10_PRIMITIVE_TOPOLOGY_TRIANGLELIST
+        //PointList = 3,
     }
 
     public enum VertexFormat : byte

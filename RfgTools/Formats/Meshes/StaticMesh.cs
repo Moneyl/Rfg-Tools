@@ -37,8 +37,9 @@ namespace RfgTools.Formats.Meshes
 
         //Gpu file data
         public List<ushort> Indices = new List<ushort>();
-        public List<vector3f> Uvs = new List<vector3f>();
-        public List<vector3f> Normals = new List<vector3f>();
+        public List<Vertex> Vertices = new List<Vertex>();
+        //public List<vector3f> Uvs = new List<vector3f>();
+        //public List<vector3f> Normals = new List<vector3f>();
 
         public void Read(string headerInputPath, string dataInputPath)
         {
@@ -124,8 +125,11 @@ namespace RfgTools.Formats.Meshes
             {
                 //Todo: Check that these aren't flipped or that it actually isn't all the normals then all the UVs or vice versa
                 //Todo: Check if its really index, vec2 uv, vec3 vertex
-                Uvs.Add(gpuFile.ReadVector3f());
-                Normals.Add(gpuFile.ReadVector3f());
+                //Uvs.Add(gpuFile.ReadVector3f());
+                //Normals.Add(gpuFile.ReadVector3f());
+                var vertex = new Vertex();
+                vertex.Read(gpuFile);
+                Vertices.Add(vertex);
             }
 
             //103 in test file, should equal Max index value and num vertices
