@@ -23,6 +23,9 @@ namespace RfgTools.Formats.Zones
         /// </summary>
         private static string[] _stringList = 
         {
+            //District names
+            "Tutorial", "Parker", "Dust", "Oasis", "Badlands", "Manufacturing", "End Game", "Eos",
+
             //Class names
             "rfg_mover", "shape_cutter", "object_effect", "district", "multi_object_backpack",
             "multi_object_flag", "multi_object_marker", "object_action_node", "player", "object_patrol",
