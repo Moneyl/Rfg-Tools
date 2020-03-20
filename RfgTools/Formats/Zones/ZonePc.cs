@@ -219,6 +219,7 @@ namespace RfgTools.Formats.Zones
             header.Add(new XAttribute("NumHandles", NumHandles));
             header.Add(new XAttribute("DistrictHash", DistrictHash));
             header.Add(new XAttribute("DistrictFlags", DistrictFlags));
+            header.Add(new XAttribute("DistrictName", DistrictName));
 
             var zoneObjects = new XElement("ZoneObjects");
             root.Add(zoneObjects);
