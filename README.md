@@ -14,3 +14,4 @@ Note: This repo does not contain any programs you can use directly and is intend
 
 # What uses this
 - [OGE](https://github.com/Moneyl/OGE/) - A modding tool for RFG still very early in development. Currently has some useful file viewing features like being able to view the contents of a packfile without manually extracting it. Has no editing features yet.
+- [Rfg Toolset](https://github.com/Moneyl/RFG-Toolset/) - A set of file format tools using this repo.
