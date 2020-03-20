@@ -1,6 +1,8 @@
-﻿using System.Collections.Generic;
+﻿using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using Microsoft.VisualBasic;
 using RfgTools.Helpers;
 using RfgTools.Types;
 
@@ -29,10 +31,16 @@ namespace RfgTools.Formats.Meshes
         public IndexBufferData IndexBufferConfig;
 
         //Submeshes
-        public List<SubmeshData> SubMeshes = new List<SubmeshData>();
+        public List<SubmeshData> SubMeshes;
 
         //Render blocks
-        public List<RenderBlock> RenderBlocks = new List<RenderBlock>();
+        public List<RenderBlock> RenderBlocks;
+
+        //Material data block
+        public MaterialBlock MaterialBlock;
+
+        //Texture names
+        public List<string> TextureNames;
 
 
         //Gpu file data
@@ -84,6 +92,7 @@ namespace RfgTools.Formats.Meshes
             IndexBufferConfig = new IndexBufferData();
             IndexBufferConfig.Read(cpuFile);
 
+            SubMeshes = new List<SubmeshData>();
             for (int i = 0; i < NumSubmeshes; i++)
             {
                 var subMesh = new SubmeshData();
@@ -91,6 +100,7 @@ namespace RfgTools.Formats.Meshes
                 SubMeshes.Add(subMesh);
             }
             //Todo: Total num might actually be sum of submeshes NumRenderBlock value
+            RenderBlocks = new List<RenderBlock>();
             for (int i = 0; i < NumSubmeshes; i++)
             {
                 var renderBlock = new RenderBlock();
@@ -102,10 +112,18 @@ namespace RfgTools.Formats.Meshes
             //Align to 16 bytes before next section
             cpuFile.Align(16);
 
-            //material map data
+            //Read material data block
+            MaterialBlock = new MaterialBlock();
+            MaterialBlock.Read(cpuFile);
 
-            //material data
-
+            //Read texture names
+            TextureNames = new List<string>();
+            cpuFile.BaseStream.Seek(SharedHeader.TextureNamesOffset, SeekOrigin.Begin);
+            foreach (var desc in MaterialBlock.TextureDescs)
+            {
+                cpuFile.BaseStream.Seek(SharedHeader.TextureNamesOffset + desc.NameOffset, SeekOrigin.Begin);
+                TextureNames.Add(cpuFile.ReadNullTerminatedString());
+            }
 
             //Read gpu file data
             uint gpuFileMeshSimpleCrc = gpuFile.ReadUInt32(); //Todo: Compare with other CRCs and error if not equal
@@ -118,28 +136,90 @@ namespace RfgTools.Formats.Meshes
             {
                 Indices.Add(gpuFile.ReadUInt16());
             }
-            gpuFile.Align(4);
+            //gpuFile.Align(4);
+            gpuFile.Align(16);
 
+            long verticesOffset = gpuFile.BaseStream.Position;
             //Read vertex buffer
             for (int i = 0; i < VertexBufferConfig.NumVerts; i++)
             {
-                //Todo: Check that these aren't flipped or that it actually isn't all the normals then all the UVs or vice versa
-                //Todo: Check if its really index, vec2 uv, vec3 vertex
-                //Uvs.Add(gpuFile.ReadVector3f());
-                //Normals.Add(gpuFile.ReadVector3f());
                 var vertex = new Vertex();
-                vertex.Read(gpuFile);
+                vertex.Read(gpuFile, VertexBufferConfig.VertexFormat);
                 Vertices.Add(vertex);
             }
 
-            //103 in test file, should equal Max index value and num vertices
-            int numUniqueIndexValues = Indices.Select(x => x).Distinct().Count();
-
-            //Pixlit1UvNmap - vertStride0 = 24
-            //Pixlit3UvNmap - vertStride0 = 32
-
             var pos = cpuFile.BaseStream.Position;
             var a = 2;
+        }
+
+        public void WriteToObjFile(string outputPath, string diffuseMapPath, string normalMapPath, string specularMapPath)
+        {
+            //Open obj file and write mesh data to it. Can easily be opened in blender
+            using var objStream = new FileStream(outputPath, FileMode.Create);
+            using var objWriter = new StreamWriter(objStream);
+
+            string outputFileNameNoExt = Path.GetFileNameWithoutExtension(outputPath);
+            string outputMaterialName = $"{outputFileNameNoExt}_mat";
+            string outputMaterialFileName = $"{outputFileNameNoExt}_material.mtl";
+            string outputMaterialPath = $"{Path.GetDirectoryName(outputPath)}//{outputMaterialFileName}";
+
+            //Write material
+            objWriter.WriteLine($"mtllib {outputMaterialFileName}");
+            objWriter.WriteLine($"usemtl {outputMaterialName}");
+
+            //Write vertices
+            float index = 0.0f;
+            foreach (var vertex in Vertices)
+            {
+                objWriter.WriteLine($"v {vertex.Pos.x} {vertex.Pos.y} {vertex.Pos.z}");// {index:0.#}");
+                index += 0.1f;
+            }
+
+            //Write uv data
+            index = 0.0f;
+            foreach (var vertex in Vertices)
+            {
+                //objWriter.WriteLine($"vt {MathF.Abs(vertex.Uvs.x / 1024)} {MathF.Abs(vertex.Uvs.y / 1024)}");
+                objWriter.WriteLine($"vt {MathF.Abs(vertex.Uvs.x / 1024)} {MathF.Abs(vertex.Uvs.y / 1024)}");
+                index += 0.1f;
+            }
+
+            //Write normals
+            //Todo: Figure out if tangent vecs are needed, currently are discarded
+            //Todo: Figure out if normal vecs are needed, currently are discarded
+            //foreach (var vertex in Vertices)
+            //{
+            //    objWriter.WriteLine($"vn {vertex.Normal.x} {vertex.Normal.y} {vertex.Normal.z}");
+            //    index += 0.1f;
+            //}
+
+            //Write faces
+            for (int i = 1; i < Indices.Count - 2; i++)
+            {
+                int index0 = Indices[i] + 1;
+                int index1 = Indices[i + 1] + 1;
+                int index2 = Indices[i + 2] + 1;
+
+                objWriter.WriteLine($"f {index0}/{index0} {index1}/{index1} {index2}/{index2}");
+            }
+
+
+            //Write material file
+            using var materialStream = new FileStream(outputMaterialPath, FileMode.Create);
+            using var materialWriter = new StreamWriter(materialStream);
+
+            materialWriter.WriteLine($"newmtl {outputMaterialName}");
+            materialWriter.WriteLine("Ka 1.000 1.000 1.000");
+            materialWriter.WriteLine("Kd 1.000 1.000 1.000");
+            materialWriter.WriteLine("Ks 0.000 0.000 0.000");
+            materialWriter.Write("\n");
+
+            if(diffuseMapPath != null)
+                materialWriter.WriteLine($"map_Kd {diffuseMapPath}");
+            if (normalMapPath != null)
+                materialWriter.WriteLine($"map_bump {normalMapPath}");
+            if (diffuseMapPath != null)
+                materialWriter.WriteLine($"map_Ns {specularMapPath}");
         }
     }
 }

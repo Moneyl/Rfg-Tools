@@ -12,13 +12,13 @@ namespace RfgTools.Formats.Meshes
         public vector3f Bmax;
         public uint RenderBlocksOffset; //Seems to be a ptr set at runtime
 
-        public void Read(BinaryReader cpuFile)
+        public void Read(BinaryReader data)
         {
-            NumRenderBlocks = cpuFile.ReadInt32();
-            OffsetTransform = cpuFile.ReadVector3f();
-            Bmin = cpuFile.ReadVector3f();
-            Bmax = cpuFile.ReadVector3f();
-            RenderBlocksOffset = cpuFile.ReadUInt32();
+            NumRenderBlocks = data.ReadInt32();
+            OffsetTransform = data.ReadVector3f();
+            Bmin = data.ReadVector3f();
+            Bmax = data.ReadVector3f();
+            RenderBlocksOffset = data.ReadUInt32();
             
         }
     }

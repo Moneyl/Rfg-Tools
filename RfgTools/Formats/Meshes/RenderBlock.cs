@@ -15,14 +15,14 @@ namespace RfgTools.Formats.Meshes
         public uint MinIndex;
         public uint MaxIndex;
 
-        public void Read(BinaryReader file)
+        public void Read(BinaryReader data)
         {
-            MaterialMapIndex = file.ReadUInt16();
-            file.Skip(2);
-            StartIndex = file.ReadUInt32();
-            NumIndices = file.ReadUInt32();
-            MinIndex = file.ReadUInt32();
-            MaxIndex = file.ReadUInt32();
+            MaterialMapIndex = data.ReadUInt16();
+            data.Skip(2);
+            StartIndex = data.ReadUInt32();
+            NumIndices = data.ReadUInt32();
+            MinIndex = data.ReadUInt32();
+            MaxIndex = data.ReadUInt32();
         }
     }
 }

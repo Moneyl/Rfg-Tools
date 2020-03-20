@@ -77,12 +77,13 @@ namespace RfgTools.Helpers
 
         public static float FitRange(this float val, float min, float max)
         {
-            if (val < min)
-                val = min;
-            if (val > max)
-                val = max;
+            float newVal = val;
+            if (newVal < min)
+                newVal = min;
+            if (newVal > max)
+                newVal = max;
 
-            return val;
+            return newVal;
         }
 
         public static void WriteCompressedVector4f(this BinaryWriter writer, vector4f vec4)
