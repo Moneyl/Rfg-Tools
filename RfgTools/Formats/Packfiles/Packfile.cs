@@ -213,6 +213,17 @@ namespace RfgTools.Formats.Packfiles
             return -1;
         }
 
+        public bool TryGetSubfileEntry(string subFileName, out PackfileEntry entry)
+        {
+            entry = null;
+            int index = GetSubfileIndex(subFileName);
+            if (index < 0)
+                return false;
+
+            entry = DirectoryEntries[index];
+            return true;
+        }
+
         public bool TryExtractSingleFile(string subFileName, string outputPath)
         {
             if (!CanExtractSingleFile())

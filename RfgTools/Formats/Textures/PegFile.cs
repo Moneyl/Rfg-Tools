@@ -1,8 +1,10 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Drawing;
 using System.IO;
 using System.Text;
 using RfgTools.Dependencies;
+using RfgTools.Helpers;
 
 namespace RfgTools.Formats.Textures
 {
@@ -91,11 +93,16 @@ namespace RfgTools.Formats.Textures
             AlignValue = header.ReadUInt16();
 
             //Read peg entries
+            int currentDataOffset = 0;
             for (int i = 0; i < NumberOfBitmaps; i++)
             {
                 var entry = new PegEntry();
                 entry.Read(header);
                 Entries.Add(entry);
+
+                //entry.GpuFileDataOffset = currentDataOffset;
+                //currentDataOffset += (int)entry.frame_size;
+                //currentDataOffset += 
             }
 
             //Read peg entry names
@@ -105,12 +112,60 @@ namespace RfgTools.Formats.Textures
             }
 
             //Load raw texture data from gpu file, convert to bitmaps for easy handling
-            foreach (var entry in Entries)
+            //foreach (var entry in Entries)
+            //{
+            //    entry.RawData = new byte[entry.frame_size];
+            //    data.Read(entry.RawData, 0, (int)entry.frame_size);
+            //    entry.Bitmap = PegUtil.EntryDataToBitmap(entry);
+            //}
+        }
+
+        public Bitmap GetEntryBitmap(PegEntry entry)
+        {
+            return GetEntryBitmap(Entries.IndexOf(entry));
+        }
+
+        public Bitmap GetEntryBitmap(int entryIndex)
+        {
+            if (entryIndex >= Entries.Count)
+                return null;
+
+            var entry = Entries[entryIndex];
+            if (entry.Edited)
             {
-                entry.RawData = new byte[entry.frame_size];
-                data.Read(entry.RawData, 0, (int)entry.frame_size);
-                entry.Bitmap = PegUtil.EntryDataToBitmap(entry);
+                return entry.Bitmap;
             }
+            else
+            {
+                var gpuFileStream = new FileStream(_gpuFilePath, FileMode.Open);
+                var rawData = new byte[entry.frame_size];
+
+                gpuFileStream.Skip(entry.data);
+                gpuFileStream.Read(rawData, 0, (int)entry.frame_size);
+                var bitmap = PegUtil.RawDataToBitmap(rawData, entry.bitmap_format, entry.width, entry.height);
+                gpuFileStream.Dispose();
+
+                return bitmap;
+            }
+        }
+
+        public byte[] GetEntryRawData(PegEntry entry)
+        {
+            return GetEntryRawData(Entries.IndexOf(entry));
+        }
+
+        public byte[] GetEntryRawData(int entryIndex)
+        {
+            if (entryIndex >= Entries.Count)
+                return null;
+
+            var entry = Entries[entryIndex];
+            using var gpuFileStream = new FileStream(_gpuFilePath, FileMode.Open);
+
+            var rawData = new byte[entry.frame_size];
+            gpuFileStream.Skip(entry.data);
+            gpuFileStream.Read(rawData, 0, (int)entry.frame_size);
+            return rawData;
         }
 
         public void Write(string cpuFilePath, string gpuFilePath)
@@ -123,10 +178,21 @@ namespace RfgTools.Formats.Textures
 
         public void Write(Stream cpuFileStream, Stream gpuFileStream)
         {
+            CheckForUnsupportedWriteTypes();
+
+            //Get raw data of entries ahead of time. This is a lame way to handle this imo but due to the design of GetEntryRawData necessary
+            //to avoid multiple streams trying to read the gpu file at once. The goal of this is to keep memory usage low and never
+            //cache big images for long, but the execution could be better.
+            var rawDatas = new List<byte[]>();
+            foreach (var entry in Entries)
+            {
+                rawDatas.Add(GetEntryRawData(entry));
+            }
+
             var cpuFile = new BinaryWriter(cpuFileStream);
             var gpuFile = new BinaryWriter(gpuFileStream);
 
-            WriteEntryData(gpuFile); //Write entry data to gpu file first so that entry size can be counted.
+            WriteEntryData(gpuFile, rawDatas); //Write entry data to gpu file first so that entry size can be counted.
             WriteHeader(cpuFile);
             WriteEntries(cpuFile);
             WriteEntryNames(cpuFile);
@@ -134,6 +200,26 @@ namespace RfgTools.Formats.Textures
             cpuFile.Seek(8, SeekOrigin.Begin); //Seek to cpu_file and gpu_file size values in cpu_file.
             cpuFile.Write((uint)cpuFile.BaseStream.Length); //Update cpu_file size variable
             cpuFile.Write((uint)gpuFile.BaseStream.Length); //Update gpu_file size variable
+        }
+
+        private void CheckForUnsupportedWriteTypes()
+        {
+            foreach (var entry in Entries)
+            {
+                switch (entry.bitmap_format)
+                {
+                    case PegFormat.PC_DXT1:
+                    case PegFormat.PC_DXT3:
+                    case PegFormat.PC_DXT5:
+                        continue;
+                    case PegFormat.PC_8888:
+                        throw new Exception($"Entry {Entries.IndexOf(entry)}, \"{entry.Name}\", has the format PC_8888. "
+                                            + "Saving for this pixel format isn't supported yet, just viewing & extracting.");
+                    default:
+                        throw new Exception($"Entry {Entries.IndexOf(entry)}, \"{entry.Name}\", has the format {entry.bitmap_format.ToString()}. "
+                                            + "This format is not yet supported.");
+                }
+            }
         }
 
         private void WriteHeader(BinaryWriter header)
@@ -167,27 +253,30 @@ namespace RfgTools.Formats.Textures
             }
         }
 
-        private void WriteEntryData(BinaryWriter gpuFile)
+        private void WriteEntryData(BinaryWriter gpuFile, List<byte[]> rawDatas)
         {
+            int index = 0;
+            uint offset = 0;
             foreach (var entry in Entries)
             {
+                var rawData = rawDatas[index];
                 if (entry.Edited)
                 {
                     if (entry.bitmap_format == PegFormat.PC_DXT1)
                     {
-                        var compressBuffer = Squish.Compress(entry.RawData, entry.width, entry.height, Squish.Flags.DXT1);
+                        var compressBuffer = Squish.Compress(rawData, entry.width, entry.height, Squish.Flags.DXT1);
                         gpuFile.Write(compressBuffer);
                         entry.frame_size = (uint)compressBuffer.Length;
                     }
                     else if (entry.bitmap_format == PegFormat.PC_DXT3)
                     {
-                        var compressBuffer = Squish.Compress(entry.RawData, entry.width, entry.height, Squish.Flags.DXT3);
+                        var compressBuffer = Squish.Compress(rawData, entry.width, entry.height, Squish.Flags.DXT3);
                         gpuFile.Write(compressBuffer);
                         entry.frame_size = (uint)compressBuffer.Length;
                     }
                     else if (entry.bitmap_format == PegFormat.PC_DXT5)
                     {
-                        var compressBuffer = Squish.Compress(entry.RawData, entry.width, entry.height, Squish.Flags.DXT5);
+                        var compressBuffer = Squish.Compress(rawData, entry.width, entry.height, Squish.Flags.DXT5);
                         gpuFile.Write(compressBuffer);
                         entry.frame_size = (uint)compressBuffer.Length;
                     }
@@ -198,9 +287,15 @@ namespace RfgTools.Formats.Textures
                 }
                 else
                 {
-                    gpuFile.Write(entry.RawData);
-                    entry.frame_size = (uint)entry.RawData.Length;
+                    gpuFile.Write(rawData);
+                    entry.frame_size = (uint)rawData.Length;
+                    entry.data = offset;
                 }
+                //Align to alignment value
+                gpuFile.Align(AlignValue);
+                //Update offset to start of next entry
+                offset = (uint)gpuFile.BaseStream.Position;
+                index++;
             }
         }
     }
