@@ -1,9 +1,9 @@
 # Rfg Tools
-Code for interacting with Red Faction Guerrilla and it's file formats. Huge thanks to [Gibbed](https://github.com/gibbed/) who did the original reverse engineering work for several of the games formats, and who's tools were used as templates to design these ones. See [Gibbed.Volition](https://github.com/gibbed/Gibbed.Volition) for his work on RFG and several other Volition games.
+Code for interacting with Red Faction Guerrilla and it's file formats. Huge thanks to [Gibbed](https://github.com/gibbed/) who did the original reverse engineering work for several of the games formats, and who's tools were used as references when designing some of these. Notably the packfile, texture, and asm_pc code. See [Gibbed.Volition](https://github.com/gibbed/Gibbed.Volition) for his work on RFG and several other Volition games.
 
 The goals of this repo are to rewrite any RFG file format code from his repo, fixing any bugs found, and to write new tools for some of the games other unique formats. Unlike Gibbed.Volition this repo will only contain code for RFG formats since it's only intended for use in RFG modding tools, keeping things more manageable.
 
-Note: This repo does not contain any programs you can use directly and is intended to be used by other tools to interact with the games file formats. Any tools using this 
+Note: This repo does not contain any programs you can use directly and is intended to be used by other tools to interact with the games file formats. Any tools using this are found in other repos.
 
 # Contents
 - [x] Packfile v3 (vpp_pc & str2_pc) packer
