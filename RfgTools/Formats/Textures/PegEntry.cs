@@ -29,12 +29,15 @@ namespace RfgTools.Formats.Textures
 
         //Note: This is stored separately from the other entry data. Placed in this class for coding convenience.
         public string Name;
+
+        //Note: Only use these two if Edited == true //Todo: Maybe hide these behind a property that only lets you do that
         //This is the raw/unconverted data. Used an edited texture wasn't imported, to avoid two conversions
         public byte[] RawData;
         //This is stored in the gpu file (gpeg_pc or gvbm_pc) and converted to a bitmap for easy use with the editor.
         public Bitmap Bitmap; //Todo: Figure out if some other type like BitmapImage or ImageSource would work better here.
                               //True if an edited version was imported
         public bool Edited = false;
+        //public int GpuFileDataOffset = 0;
 
         public void Read(BinaryReader header)
         {
