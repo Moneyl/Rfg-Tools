@@ -8,6 +8,11 @@ namespace RfgTools.Types
         public vector3f uvec;
         public vector3f fvec;
 
+        public matrix33()
+        {
+
+        }
+
         public matrix33(vector3f rvec, vector3f uvec, vector3f fvec)
         {
             this.rvec = rvec;

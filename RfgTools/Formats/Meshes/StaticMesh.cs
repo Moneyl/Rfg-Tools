@@ -46,8 +46,6 @@ namespace RfgTools.Formats.Meshes
         //Gpu file data
         public List<ushort> Indices = new List<ushort>();
         public List<Vertex> Vertices = new List<Vertex>();
-        //public List<vector3f> Uvs = new List<vector3f>();
-        //public List<vector3f> Normals = new List<vector3f>();
 
         public void Read(string headerInputPath, string dataInputPath)
         {
@@ -85,6 +83,8 @@ namespace RfgTools.Formats.Meshes
             MeshSimpleCrc = cpuFile.ReadUInt32();
             CpuDataSize = cpuFile.ReadUInt32();
             GpuDataSize = cpuFile.ReadUInt32();
+
+            //Read mesh data
             NumSubmeshes = cpuFile.ReadUInt32();
             SubmeshesOffset = cpuFile.ReadUInt32();
             VertexBufferConfig = new VertexBufferData();
@@ -92,6 +92,7 @@ namespace RfgTools.Formats.Meshes
             IndexBufferConfig = new IndexBufferData();
             IndexBufferConfig.Read(cpuFile);
 
+            //Read submesh data
             SubMeshes = new List<SubmeshData>();
             for (int i = 0; i < NumSubmeshes; i++)
             {
@@ -99,6 +100,7 @@ namespace RfgTools.Formats.Meshes
                 subMesh.Read(cpuFile);
                 SubMeshes.Add(subMesh);
             }
+            //Read render blocks
             //Todo: Total num might actually be sum of submeshes NumRenderBlock value
             RenderBlocks = new List<RenderBlock>();
             for (int i = 0; i < NumSubmeshes; i++)
@@ -109,6 +111,9 @@ namespace RfgTools.Formats.Meshes
             }
             //Todo: Compare with previous crc and report error if they don't match
             uint MeshSimpleCrc2 = cpuFile.ReadUInt32();
+            if (MeshSimpleCrc != MeshSimpleCrc2)
+                throw new Exception($"Failed to read mesh data from \"{Path.GetFileName(headerInputPath)}\". Mesh verification CRCs do not match!");
+
             //Align to 16 bytes before next section
             cpuFile.Align(16);
 
@@ -127,6 +132,10 @@ namespace RfgTools.Formats.Meshes
 
             //Read gpu file data
             uint gpuFileMeshSimpleCrc = gpuFile.ReadUInt32(); //Todo: Compare with other CRCs and error if not equal
+            if (MeshSimpleCrc != gpuFileMeshSimpleCrc)
+                throw new Exception($"Header and gpu file start CRCs don't match for \"{Path.GetFileName(headerInputPath)}\" & \"{Path.GetFileName(dataInputPath)}\". " 
+                                    + $"Make sure they were properly extracted.");
+
             gpuFile.Align(16);
 
             //Note: Currently assuming only one index and vertex type for static meshes, need to set up way of dynamically handling different layouts across meshes
@@ -147,6 +156,11 @@ namespace RfgTools.Formats.Meshes
                 vertex.Read(gpuFile, VertexBufferConfig.VertexFormat);
                 Vertices.Add(vertex);
             }
+
+            uint gpuEndCrc = gpuFile.ReadUInt32();
+            if (MeshSimpleCrc != gpuEndCrc)
+                throw new Exception($"Header and gpu file end CRCs don't match for \"{Path.GetFileName(headerInputPath)}\" & \"{Path.GetFileName(dataInputPath)}\". "
+                                    + $"Make sure they were properly extracted.");
 
             var pos = cpuFile.BaseStream.Position;
             var a = 2;

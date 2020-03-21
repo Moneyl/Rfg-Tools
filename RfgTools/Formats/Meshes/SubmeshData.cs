@@ -19,7 +19,6 @@ namespace RfgTools.Formats.Meshes
             Bmin = data.ReadVector3f();
             Bmax = data.ReadVector3f();
             RenderBlocksOffset = data.ReadUInt32();
-            
         }
     }
 }
