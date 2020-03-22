@@ -1,7 +1,9 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using RfgTools.Helpers;
+using RfgTools.Types;
 
 namespace RfgTools.Formats.Meshes
 {
@@ -35,6 +37,7 @@ namespace RfgTools.Formats.Meshes
         //Render blocks
         public List<RenderBlock> RenderBlocks;
 
+
         public void Read(string headerPath, string dataPath)
         {
             using var cpuFileStream = new FileStream(headerPath, FileMode.Open);
@@ -50,6 +53,7 @@ namespace RfgTools.Formats.Meshes
             if (Signature != expectedSignature)
                 throw new Exception($"Error! Invalid static mesh signature. Expected value is {expectedSignature}. The detected signature is {Signature}");
 
+            //Read file format version
             Version = cpuFile.ReadUInt32();
             if (Version != expectedVersion)
                 throw new Exception($"Error! Invalid static mesh version. Expected version {expectedVersion}. The detected version is {Version}");
@@ -62,7 +66,7 @@ namespace RfgTools.Formats.Meshes
                 throw new Exception("Error! Decal reading is supported yet. Show the maintainer this error, the command you ran, and the file you're trying "
                                     + $"to read \"{Path.GetFileName(headerPath)}\"");
 
-            //Maybe read patch data (might be here)
+            //Read patch data
             Patches = new List<TerrainPatch>();
             for (int i = 0; i < Subzone.PatchCount; i++)
             {
@@ -70,28 +74,23 @@ namespace RfgTools.Formats.Meshes
                 patch.Read(cpuFile);
                 Patches.Add(patch);
             }
-
             cpuFile.Align(16);
 
-            //Read decal data
+            //Read decal data (Thought to be here but current test file has 0 decals)
 
             //Read mesh data
-            //cpuFile.BaseStream.Seek(3536, SeekOrigin.Begin);
             MeshVersion = cpuFile.ReadUInt32();
-            MeshSimpleCrc = cpuFile.ReadUInt32();
-            CpuDataSize = cpuFile.ReadUInt32();
-            GpuDataSize = cpuFile.ReadUInt32();
+            MeshSimpleCrc = cpuFile.ReadUInt32(); //Mesh CRC repeated several times in cpu & gpu file. Likely used to catch pack/unpack failures
+            CpuDataSize = cpuFile.ReadUInt32(); //IIRC the size of cpu file mesh data + submesh data + render blocks + 4 for CRC 
+            GpuDataSize = cpuFile.ReadUInt32(); //Size of gpu file in bytes
 
             //Read mesh data
             NumSubmeshes = cpuFile.ReadUInt32();
             SubmeshesOffset = cpuFile.ReadUInt32();
-            VertexBufferConfig = new VertexBufferData();
+            VertexBufferConfig = new VertexBufferData(); //Contains info about vertex format and stride
             VertexBufferConfig.Read(cpuFile);
-            IndexBufferConfig = new IndexBufferData();
+            IndexBufferConfig = new IndexBufferData(); //Contains info about index format and stride
             IndexBufferConfig.Read(cpuFile);
-
-            var offsetFromMeshDataStart = cpuFile.BaseStream.Position - 3536;
-
 
             //Read submesh data
             SubMeshes = new List<SubmeshData>();
@@ -103,8 +102,8 @@ namespace RfgTools.Formats.Meshes
                 SubMeshes.Add(subMesh);
                 numRenderBlocks += (uint)subMesh.NumRenderBlocks;
             }
+
             //Read render blocks
-            //Todo: Total num might actually be sum of submeshes NumRenderBlock value
             RenderBlocks = new List<RenderBlock>();
             for (int i = 0; i < numRenderBlocks; i++)
             {
@@ -112,7 +111,8 @@ namespace RfgTools.Formats.Meshes
                 renderBlock.Read(cpuFile);
                 RenderBlocks.Add(renderBlock);
             }
-            //Todo: Compare with previous crc and report error if they don't match
+            
+            //Read another copy of the mesh CRC and validate
             uint meshSimpleCrc2 = cpuFile.ReadUInt32();
             if(MeshSimpleCrc != meshSimpleCrc2)
                 throw new Exception($"Failed to read mesh data from \"{Path.GetFileName(headerPath)}\". Mesh verification CRCs do not match!");
@@ -120,9 +120,49 @@ namespace RfgTools.Formats.Meshes
             //Align to 16 bytes before next section
             cpuFile.Align(16);
 
+            //Todo: Reverse the rest of the header format. Has some info about materials and more
 
-            var a = cpuFile.BaseStream.Position;
-            var b = 2;
+
+
+
+            //Attempt to read gpu file data
+            //First 4 bytes are the mesh CRC again, then align to 16 bytes
+            uint gpuFileMeshSimpleCrc = gpuFile.ReadUInt32(); //Todo: Compare with other CRCs and error if not equal. Also should read CRC at end of gpuFile (last 4 bytes)
+            //Align to 16 bytes to get to index list start
+            gpuFile.Align(16);
+
+            List<ushort> indices = new List<ushort>();
+            List<TerrainMeshVert> vertices = new List<TerrainMeshVert>();
+
+            //Read indices
+            for (int i = 0; i < IndexBufferConfig.NumIndices; i++)
+            {
+                indices.Add(gpuFile.ReadUInt16());
+            }
+            gpuFile.Align(16); //Align to 16 bytes after reading indices
+
+            //Read vertices
+            for (int i = 0; i < VertexBufferConfig.NumVerts; i++)
+            {
+                var vert = new TerrainMeshVert();
+                vert.Read(gpuFile);
+                vertices.Add(vert);
+            }
+
+            //Read last instance of the mesh CRC at the end of the gpu file
+            uint gpuFileEndCrc = gpuFile.ReadUInt32();
+        }
+
+        public class TerrainMeshVert
+        {
+            public vector3f Pos;
+            public vector4f Normal;
+
+            public void Read(BinaryReader data)
+            {
+                Pos = new vector3f(data.ReadUInt16(), data.ReadUInt16(), 0.0f);
+                Normal = data.ReadCompressedVector4f();
+            }
         }
     }
 }
