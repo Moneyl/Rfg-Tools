@@ -147,6 +147,29 @@ namespace RfgTools.Helpers
             return new matrix33(reader.ReadVector3f(), reader.ReadVector3f(), reader.ReadVector3f());
         }
 
+        public static List<string> ReadSizedStringList(this BinaryReader reader, long listSize)
+        {
+            var stringList = new List<string>();
+            if (listSize <= 0) 
+                return stringList;
+            
+            long startPos = reader.BaseStream.Position;
+            while (reader.BaseStream.Position - startPos < listSize)
+            {
+                stringList.Add(reader.ReadNullTerminatedString());
+                while (reader.BaseStream.Position - startPos < listSize)
+                {
+                    //Sometimes names have extra null bytes after them for some reason. Simple way to handle this
+                    if (reader.PeekChar() == '\0')
+                        reader.Skip(1);
+                    else
+                        break;
+                }
+            }
+
+            return stringList;
+        }
+
         public static T ReadType<T>(this BinaryReader reader)
         {
             Type type = typeof(T);

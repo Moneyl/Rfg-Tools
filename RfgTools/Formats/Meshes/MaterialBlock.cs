@@ -20,9 +20,17 @@ namespace RfgTools.Formats.Meshes
         //Constant values
         public List<MaterialConstant> Constants;
 
-        public void Read(BinaryReader data)
+        public void Read(BinaryReader data, bool altBehavior = false)
         {
             //material map data
+            if (altBehavior)
+            {
+
+            }
+            else
+            {
+                
+            }
             uint unk1 = data.ReadUInt32();
             uint numMaterials = data.ReadUInt32();
             uint unk2 = data.ReadUInt32();

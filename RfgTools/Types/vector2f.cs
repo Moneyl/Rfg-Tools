@@ -7,6 +7,11 @@ namespace RfgTools.Types
         public float x;
         public float y;
 
+        public vector2f()
+        {
+
+        }
+
         public vector2f(float x, float y)
         {
             this.x = x;
