@@ -147,6 +147,11 @@ namespace RfgTools.Helpers
             return new matrix33(reader.ReadVector3f(), reader.ReadVector3f(), reader.ReadVector3f());
         }
 
+        public static matrix43 ReadMatrix43(this BinaryReader reader)
+        {
+            return new matrix43(reader.ReadVector3f(), reader.ReadVector3f(), reader.ReadVector3f(), reader.ReadVector3f());
+        }
+
         public static T ReadType<T>(this BinaryReader reader)
         {
             Type type = typeof(T);
