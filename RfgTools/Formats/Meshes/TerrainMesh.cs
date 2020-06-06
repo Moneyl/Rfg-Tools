@@ -55,14 +55,12 @@ namespace RfgTools.Formats.Meshes
             //Read header data
             Signature = cpuFile.ReadUInt32();
             if (Signature != expectedSignature)
-                throw new Exception(
-                    $"Error! Invalid terrain mesh signature. Expected value is {expectedSignature}. The detected signature is {Signature}");
+                throw new Exception($"Error! Invalid terrain mesh signature. Expected value is {expectedSignature}. The detected signature is {Signature}");
 
             //Read file format version
             Version = cpuFile.ReadUInt32();
             if (Version != expectedVersion)
-                throw new Exception(
-                    $"Error! Invalid terrain mesh version. Expected version {expectedVersion}. The detected version is {Version}");
+                throw new Exception($"Error! Invalid terrain mesh version. Expected version {expectedVersion}. The detected version is {Version}");
 
             Index = cpuFile.ReadUInt32();
             NumStitchPieceNames = cpuFile.ReadUInt32();
@@ -91,10 +89,8 @@ namespace RfgTools.Formats.Meshes
 
             //Read mesh data
             MeshVersion = cpuFile.ReadUInt32();
-            MeshSimpleCrc =
-                cpuFile.ReadUInt32(); //Mesh CRC repeated several times in cpu & gpu file. Likely used to catch pack/unpack failures
-            CpuDataSize =
-                cpuFile.ReadUInt32(); //IIRC the size of cpu file mesh data + submesh data + render blocks + 4 for CRC 
+            MeshSimpleCrc = cpuFile.ReadUInt32(); //Mesh CRC repeated several times in cpu & gpu file. Likely used to catch pack/unpack failures
+            CpuDataSize = cpuFile.ReadUInt32(); //IIRC the size of cpu file mesh data + submesh data + render blocks + 4 for CRC 
             GpuDataSize = cpuFile.ReadUInt32(); //Size of gpu file in bytes
 
             //Read mesh data
@@ -128,8 +124,7 @@ namespace RfgTools.Formats.Meshes
             //Read another copy of the mesh CRC and validate
             uint meshSimpleCrc2 = cpuFile.ReadUInt32();
             if (MeshSimpleCrc != meshSimpleCrc2)
-                throw new Exception(
-                    $"Failed to read mesh data from \"{Path.GetFileName(headerPath)}\". Mesh verification CRCs do not match!");
+                throw new Exception($"Failed to read mesh data from \"{Path.GetFileName(headerPath)}\". Mesh verification CRCs do not match!");
 
             //Align to 16 bytes before next section
             cpuFile.Align(16);

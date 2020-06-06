@@ -97,8 +97,8 @@ namespace RfgTools.Formats.Meshes
             NumStitchPieces = cpuFile.ReadUInt32();
 
             //Complain about stitch piece names > 0. Haven't tested a file with any yet
-            if(NumStitchPieceNames > 0)
-                throw new Exception($"Error! NumStitchPieceNames > 0 in \"{Path.GetFileName(headerPath)}\". Not yet supported. Show this to the maintainer and tell them which file caused the error.");
+            //if(NumStitchPieceNames > 0)
+            //    throw new Exception($"Error! NumStitchPieceNames > 0 in \"{Path.GetFileName(headerPath)}\". Not yet supported. Show this to the maintainer and tell them which file caused the error.");
 
             //Read texture names
             TextureNames = cpuFile.ReadSizedStringList(TextureNamesSize);
@@ -126,7 +126,7 @@ namespace RfgTools.Formats.Meshes
 
             uint unkNamesListSize = cpuFile.ReadUInt32();
             UnkStringList = cpuFile.ReadSizedStringList(unkNamesListSize);
-            cpuFile.Align(16);
+            cpuFile.Align(4);
 
             uint maybeNumMaterials = cpuFile.ReadUInt32();
             if (maybeNumMaterials == 0)
@@ -136,7 +136,13 @@ namespace RfgTools.Formats.Meshes
                 cpuFile.BaseStream.Seek(cpuFile.BaseStream.Position - 8, SeekOrigin.Begin);
                 if (maybeNumMaterials == 0)
                 {
-                    var e = 2;
+                    cpuFile.Skip(12);
+                    maybeNumMaterials = cpuFile.ReadUInt32();
+                    cpuFile.BaseStream.Seek(cpuFile.BaseStream.Position - 12, SeekOrigin.Begin);
+                    if (maybeNumMaterials == 0)
+                    {
+                        var e = 2;
+                    }
                 }
             }
             //cpuFile.Skip(4); //Don't know if this skip is necessary but the game code seems to do it.
