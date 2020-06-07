@@ -324,23 +324,24 @@ namespace RfgTools.Formats.Packfiles
                 Console.WriteLine(errorString);
                 throw new Exception(errorString);
             }
+            File.WriteAllBytes(@"G:\RFG Unpack 2\PackfilePackerTests\misc_vpp_CC_decompress_unsplit_result.bin", decompressedData);
 
-            for (int i = 0; i < DirectoryEntries.Count; i++)
-            {
-                var entry = DirectoryEntries[i];
-                long decompressedPosition = entry.DataOffset;
-                if (Verbose)
-                    Console.Write("{0}> Extracting {1}...", packfileName, entry.FileName);
+            //for (int i = 0; i < DirectoryEntries.Count; i++)
+            //{
+            //    var entry = DirectoryEntries[i];
+            //    long decompressedPosition = entry.DataOffset;
+            //    if (Verbose)
+            //        Console.Write("{ 0}> Extracting {1}...", packfileName, entry.FileName);
 
-                using var writer = new BinaryWriter(System.IO.File.Create(outputPath + entry.FileName));
-                for (long j = 0; j < entry.DataSize; j++)
-                {
-                    writer.Write(decompressedData[decompressedPosition + j]);
-                }
+            //    using var writer = new BinaryWriter(System.IO.File.Create(outputPath + entry.FileName));
+            //    for (long j = 0; j < entry.DataSize; j++)
+            //    {
+            //        writer.Write(decompressedData[decompressedPosition + j]);
+            //    }
 
-                if (Verbose)
-                    Console.WriteLine(" Done!");
-            }
+            //    if (Verbose)
+            //        Console.WriteLine(" Done!");
+            //}
         }
 
         private void ReadDataCompressed(string packfilePath, string outputPath, Stream stream)
@@ -601,18 +602,19 @@ namespace RfgTools.Formats.Packfiles
             else
                 WriteDataDefault(writer, condensed);
 
-            //Write header
+            //Seek to start of packfile and write header. We do this last since we have to calculate values while packing
             Header.FileSize = (uint)writer.BaseStream.Length;
             writer.Seek(0, SeekOrigin.Begin);
             Header.WriteToBinary(writer);
 
-            //Write entries and names
+            //Write entries and names immediately following the header.
             foreach (var entry in DirectoryEntries)
             {
                 entry.WriteToBinary(writer);
             }
             writer.Align();
 
+            //Write entry names immediately following the entries block
             foreach (var entry in DirectoryEntries)
             {
                 writer.WriteNullTerminatedString(entry.FileName);
@@ -629,24 +631,87 @@ namespace RfgTools.Formats.Packfiles
             //Write zlib headers because DeflateStream doesn't do this for some reason... 
             stream.Write(new byte[] { 0x78, 0xDA });
 
-            using (var deflateStream = new DeflateStream(stream, CompressionLevel.Optimal, true))
+            //using (var deflateStream = new DeflateStream(stream, CompressionLevel.Optimal, true))
+            //{
+            //    //Compress each subfile
+            //    foreach (var entry in DirectoryEntries)
+            //    {
+            //        byte[] uncompressedData = File.ReadAllBytes(entry.FullPath);
+            //        deflateStream.Write(uncompressedData);
+            //        deflateStream.Flush();
+
+            //        entry.CompressedDataSize = (uint)(stream.Position - lastPos);
+            //        lastPos = stream.Position;
+            //        Header.CompressedDataSize += entry.CompressedDataSize;
+            //    }
+            //}
+
+            //Compress each subfile
+            uint count = 0;
+            long uncompressedPosition = 0;
+            foreach (var entry in DirectoryEntries)
             {
-                //Compress each subfile
-                foreach (var entry in DirectoryEntries)
+                using (var deflateStream = new DeflateStream(stream, CompressionLevel.Optimal, true))
                 {
+                    //NOTE: Change this if compression level changes
+                    //Write zlib headers because DeflateStream doesn't do this for some reason... 
+                    //stream.Write(new byte[] { 0x78, 0xDA });
+
+                    entry.DataOffset = uncompressedPosition;
+
+                    //Compress data from each subfile and write to file
                     byte[] uncompressedData = File.ReadAllBytes(entry.FullPath);
                     deflateStream.Write(uncompressedData);
                     deflateStream.Flush();
 
-                    entry.CompressedDataSize = (uint)(stream.Position - lastPos);
-                    lastPos = stream.Position;
+                    //Track uncompressed position for entry offset values
+                    uncompressedPosition += uncompressedData.Length;
+
+
+                    //Align uncompressed data to 16 bytes
+                    int paddingSize = 0;
+                    {
+                        int remainder = (int)(uncompressedPosition % 16);
+                        if(remainder > 0)
+                            paddingSize = (int)16 - remainder;
+                        else
+                            paddingSize = 0;
+
+                        deflateStream.Write(Enumerable.Repeat((byte)0x0, paddingSize).ToArray(), 0, paddingSize); 
+                        uncompressedPosition += paddingSize;
+                    }
+
+                    deflateStream.Flush();
+
+                    //Track compressed size
+                    entry.CompressedDataSize = (uint)(stream.Position - lastPos); //Don't count padding
                     Header.CompressedDataSize += entry.CompressedDataSize;
+
+                    //writer.Align();
+                    lastPos = stream.Position;
                 }
+                //DeflateStream writes 2 bytes of junk once it's disposed. No idea why, but this is to fix that.
+                if (stream.Position != lastPos)
+                    stream.Seek(lastPos, SeekOrigin.Begin);
+
+                count++;
             }
 
-            //Manually add header bytes size
-            DirectoryEntries[0].CompressedDataSize += 2;
-            Header.CompressedDataSize += 2;
+            //long position = writer.BaseStream.Position;
+            //int remainder = (int)(position % alignmentValue);
+
+            //int paddingSize = 0;
+            //if (remainder > 0)
+            //    paddingSize = (int)alignmentValue - remainder;
+            //else
+            //    paddingSize = 0;
+
+            //writer.Write(Enumerable.Repeat((byte)0x0, paddingSize).ToArray(), 0, paddingSize);
+            //return paddingSize;
+
+            //Manually add zlib header bytes size to first entry
+            //DirectoryEntries[0].CompressedDataSize += 2;
+            //Header.CompressedDataSize += 2;
 
             //DeflateStream writes 2 bytes of junk once it's disposed. No idea why, but this is to fix that.
             if (stream.Position != lastPos)
